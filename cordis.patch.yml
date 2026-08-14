@@ -1,0 +1,8 @@
+# dsh-achievements bundle patch layer.
+# Inserted as its own profile layer when installed via `dsh plugin add`.
+# The `name` is this package's own entry point, resolved from the profile's
+# node_modules where pnpm installs the bundle.
+
+- insert:
+    - id: achievements
+      name: 'dsh-achievements'
