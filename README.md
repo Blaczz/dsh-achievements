@@ -4,7 +4,7 @@
 
 [English](./README.md) | [简体中文](./README.zh.md)
 
-A **DeepSeek Harness (DSH)** gamification plugin that quietly counts your real usage (turns, tool calls, sessions, consecutive days) and unlocks achievements at milestones, toasting in real time and showing a badge wall in the settings page. State survives across sessions (stored in the DSH home directory), and all counting rides the official event seams (`session/event` `turn/end` + `tools/result`) — **no core changes**.
+A **DeepSeek Harness (DSH)** gamification plugin that quietly counts your real usage (turns, tool calls, sessions, consecutive days) and unlocks achievements at milestones, toasting in real time and showing a badge wall in the settings page. State survives across sessions (stored in the DSH home directory), and all counting rides the official `session/event` seam (`turn/end`, `tool/call`, `tool/result`) — **no core changes**.
 
 ## ✨ Built-in achievements
 
@@ -18,6 +18,17 @@ A **DeepSeek Harness (DSH)** gamification plugin that quietly counts your real u
 | 📚 Session Collector | 10 sessions |
 | 🔥 Three-Day Streak | 3 consecutive active days |
 | 🌋 Week on Fire | 7 consecutive active days |
+
+Behavior achievements (per-session, v0.2):
+
+| Achievement | Condition |
+|---|---|
+| 🔁 Déjà Vu | edit the same file 5 times in one session |
+| 🕳 Rabbit Hole | read 20 files before your first edit |
+| 💣 YOLO | edit 8 files before your first test |
+| 🔥 It Works Eventually | pass after 5 failed tests |
+| 🎰 Surely This Time | same test command fails 5 times in a row |
+| 🌱 Touch Grass | 100 tool calls in one session |
 
 ## 📦 Install
 
@@ -39,18 +50,30 @@ dsh plugin --profile web add ./dsh-achievements
 1. Chat and let the agent work: turns, tool calls, new sessions and daily activity accumulate; a toast pops when a new achievement unlocks.
 2. **Settings → 🏆 成就**: four counters (turns / tool calls / sessions / streak) plus the badge wall (unlocked with timestamps, locked dimmed).
 
-## 🔌 For developers: the `ctx.achievements` service
+## 🔌 For developers: the `ctx.achievements` SDK
+
+Register your own achievements from a Host plugin (built-in and third-party share one evaluation path):
 
 ```ts
-export const inject = ['slots', 'achievements']
+export const inject = ['achievements']
 
 export function apply(ctx: Context): void {
-  void ctx.achievements.refresh()            // re-poll state
-  const ids = ctx.achievements.unlockedIds() // unlocked achievement ids
+  ctx.achievements.register({
+    id: 'python-first-run',
+    icon: '🐍',
+    title: { zh: '蟒蛇出洞', en: 'First Python Run' },
+    description: { zh: '首次运行 Python', en: 'Run Python for the first time' },
+    rarity: 'uncommon',
+    xp: 20,
+    scope: 'session',
+    evaluate: ctx => ({ unlocked: ctx.session.toolCalls >= 1 }),
+  })
 }
 ```
 
-> Extensibility: `dsh-achievements` also exports the pure engine (`applyEvent` / `BUILTIN_ACHIEVEMENTS` / `AchievementDef`) for registering custom achievements server-side in the future.
+Or register a whole pack: `ctx.achievements.registerPack({ id, version, name, achievements })`. Duplicate ids throw. See `docs/SDK.md` for the full guide + `examples/python-pack.ts`.
+
+On the browser side, other client plugins read state via `ctx.achievementsState.refresh()` / `ctx.achievementsState.unlockedIds()`.
 
 ## 🛠️ Development
 

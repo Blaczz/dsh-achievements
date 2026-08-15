@@ -1,63 +1,60 @@
 /**
- * The achievement engine, extracted as pure functions so the unlock rules are
- * unit-testable without a running harness. The Host half feeds real session /
- * tool events in; this module only maps counters → achievements.
- *
- * State shape:
- * - `counters` — lifetime totals (turns, tool calls, sessions, streak days)
- * - `unlocked` — achievement id → unlock epoch-ms
- * - `lastActiveDay` — 'YYYY-MM-DD' of the most recent turn, drives the streak
- * - `seenSessions` — distinct session ids that completed a turn
+ * Achievement domain model v2 + the pure evaluation engine. Unlock rules moved
+ * from `condition(counters)` to `evaluate(ctx)`, so a definition can read both
+ * lifetime/profile and session behavior. The Host feeds standardized events in;
+ * this module reduces them and evaluates every still-locked achievement.
  */
+import type { AchievementEvent } from './events.ts'
+import { buildContext, reduceState, type AchievementContext } from './reducer.ts'
+import { createInitialSessionState, touchSession, type AchievementState, type ProfileState } from './state.ts'
+import type { AchievementPack } from './sdk.ts'
 
-export interface AchievementCounters {
-  turns: number
-  toolCalls: number
-  sessions: number
-  streakDays: number
-}
+// ---- model types ----
 
 export interface LocalizedText {
   zh: string
   en: string
 }
 
+export type AchievementRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'
+
+export type AchievementScope = 'lifetime' | 'session'
+
+export interface AchievementEvaluation {
+  unlocked: boolean
+  /** Optional progress toward the target (rendered by Steamification, P2). */
+  progress?: number
+  /** Optional target the progress is measured against. */
+  target?: number
+}
+
+export type { AchievementContext } from './reducer.ts'
+
 export interface AchievementDef {
   id: string
   icon: string
   title: LocalizedText
   description: LocalizedText
-  /** Unlocked when this predicate holds for the current counters. */
-  condition: (counters: AchievementCounters) => boolean
+  flavorText?: LocalizedText
+  rarity: AchievementRarity
+  xp: number
+  scope: AchievementScope
+  hidden?: boolean
+  evaluate(ctx: AchievementContext): AchievementEvaluation
 }
-
-export interface AchievementState {
-  counters: AchievementCounters
-  unlocked: Record<string, number>
-  lastActiveDay: string | null
-  seenSessions: string[]
-}
-
-/** One lifecycle event the engine understands. */
-export type AchievementEvent =
-  | { kind: 'turn-end'; sessionId: string }
-  | { kind: 'tool-call' }
 
 export interface AchievementProgress {
   state: AchievementState
   newlyUnlocked: AchievementDef[]
 }
 
-export function createInitialState(): AchievementState {
-  return {
-    counters: { turns: 0, toolCalls: 0, sessions: 0, streakDays: 0 },
-    unlocked: {},
-    lastActiveDay: null,
-    seenSessions: [],
-  }
-}
+// ---- engine ----
 
-/** Advance the engine by one event; returns the next state and new unlocks. */
+/**
+ * Advance the engine by one standardized event: reduce it into v2 state, build
+ * the evaluation context, then unlock every still-locked achievement whose
+ * `evaluate` now holds.
+ */
 export function applyEvent(
   state: AchievementState,
   event: AchievementEvent,
@@ -65,104 +62,229 @@ export function applyEvent(
   today: string,
   now = Date.now(),
 ): AchievementProgress {
-  const counters: AchievementCounters = { ...state.counters }
-  const seenSessions = [...state.seenSessions]
-  let lastActiveDay = state.lastActiveDay
-
-  if (event.kind === 'turn-end') {
-    counters.turns += 1
-    if (!seenSessions.includes(event.sessionId)) {
-      seenSessions.push(event.sessionId)
-      counters.sessions = seenSessions.length
-    }
-    if (lastActiveDay === null) {
-      counters.streakDays = 1
-    } else if (lastActiveDay !== today) {
-      counters.streakDays = lastActiveDay === yesterdayOf(today) ? counters.streakDays + 1 : 1
-    }
-    lastActiveDay = today
-  } else {
-    counters.toolCalls += 1
-  }
-
+  const nextState = reduceState(state, event, today)
+  const ctx = buildContext(nextState, event.sessionId)
   const newlyUnlocked: AchievementDef[] = []
-  const unlocked = { ...state.unlocked }
+  const unlocked = { ...nextState.profile.unlocked }
+  let xpGained = 0
   for (const def of defs) {
-    if (!(def.id in unlocked) && def.condition(counters)) {
+    if (!(def.id in unlocked) && def.evaluate(ctx).unlocked) {
       unlocked[def.id] = now
       newlyUnlocked.push(def)
+      xpGained += def.xp
     }
   }
 
-  return { state: { counters, unlocked, lastActiveDay, seenSessions }, newlyUnlocked }
+  // Attribute this session's unlocks + XP so a session report shows only the
+  // additions made here.
+  let sessions = nextState.sessions
+  if (newlyUnlocked.length > 0) {
+    const session = sessions[event.sessionId] ?? createInitialSessionState()
+    sessions = touchSession(sessions, event.sessionId, {
+      ...session,
+      unlocked: [...session.unlocked, ...newlyUnlocked.map(def => def.id)],
+      xpGained: session.xpGained + xpGained,
+    })
+  }
+
+  return {
+    state: {
+      ...nextState,
+      profile: { ...nextState.profile, unlocked, xp: nextState.profile.xp + xpGained },
+      sessions,
+    },
+    newlyUnlocked,
+  }
 }
 
-/** 'YYYY-MM-DD' one calendar day before `day` (UTC arithmetic, deterministic). */
-export function yesterdayOf(day: string): string {
-  const [year, month, date] = day.split('-').map(Number)
-  const value = new Date(Date.UTC(year!, month! - 1, date! - 1))
-  return value.toISOString().slice(0, 10)
+/** Serialized progress view of one achievement (progress / target only). */
+export interface AchievementProgressView {
+  progress?: number
+  target?: number
 }
 
-/** The built-in achievements (ordered for display). */
-export const BUILTIN_ACHIEVEMENTS: readonly AchievementDef[] = [
+/** Evaluate every definition and keep only the ones reporting progress/target. */
+export function computeProgress(
+  defs: readonly AchievementDef[],
+  ctx: AchievementContext,
+): Record<string, AchievementProgressView> {
+  const out: Record<string, AchievementProgressView> = {}
+  for (const def of defs) {
+    const evaluation = def.evaluate(ctx)
+    if (evaluation.progress !== undefined || evaluation.target !== undefined) {
+      out[def.id] = { progress: evaluation.progress, target: evaluation.target }
+    }
+  }
+  return out
+}
+
+// ---- legacy counter compatibility ----
+
+/** The v1 counter view, kept so existing counter rules need no rewrite. */
+export interface AchievementCounters {
+  turns: number
+  toolCalls: number
+  sessions: number
+  streakDays: number
+}
+
+export function countersOf(profile: ProfileState): AchievementCounters {
+  return {
+    turns: profile.turns,
+    toolCalls: profile.toolCalls,
+    sessions: profile.sessions,
+    streakDays: profile.currentStreak,
+  }
+}
+
+/** Wrap a v1 `condition(counters)` into a v2 `evaluate(ctx)` definition. */
+export function fromCounterCondition(
+  base: { id: string; icon: string; title: LocalizedText; description: LocalizedText },
+  condition: (counters: AchievementCounters) => boolean,
+  overrides?: Partial<Pick<AchievementDef, 'rarity' | 'xp' | 'scope' | 'hidden' | 'flavorText'>>,
+): AchievementDef {
+  return {
+    ...base,
+    rarity: overrides?.rarity ?? 'common',
+    xp: overrides?.xp ?? 0,
+    scope: overrides?.scope ?? 'lifetime',
+    hidden: overrides?.hidden ?? false,
+    flavorText: overrides?.flavorText,
+    evaluate: ctx => ({ unlocked: condition(countersOf(ctx.profile)) }),
+  }
+}
+
+// ---- built-in achievements ----
+
+/** Legacy lifetime counter achievements (v1), carried into the v2 model. */
+export const COUNTER_ACHIEVEMENTS: readonly AchievementDef[] = [
+  fromCounterCondition(
+    { id: 'first-turn', icon: '🎬', title: { zh: '初次登场', en: 'First Turn' }, description: { zh: '完成第一个回合', en: 'Complete your first turn' } },
+    c => c.turns >= 1, { rarity: 'common', xp: 10 },
+  ),
+  fromCounterCondition(
+    { id: 'ten-turns', icon: '🔟', title: { zh: '渐入佳境', en: 'Warming Up' }, description: { zh: '累计完成 10 个回合', en: 'Complete 10 turns' } },
+    c => c.turns >= 10, { rarity: 'common', xp: 20 },
+  ),
+  fromCounterCondition(
+    { id: 'hundred-turns', icon: '💯', title: { zh: '百炼成钢', en: 'Century Club' }, description: { zh: '累计完成 100 个回合', en: 'Complete 100 turns' } },
+    c => c.turns >= 100, { rarity: 'epic', xp: 200 },
+  ),
+  fromCounterCondition(
+    { id: 'first-tool', icon: '🔧', title: { zh: '工具初体验', en: 'Tool Time' }, description: { zh: '首次让 agent 调用工具', en: 'First tool call' } },
+    c => c.toolCalls >= 1, { rarity: 'common', xp: 10 },
+  ),
+  fromCounterCondition(
+    { id: 'hundred-tools', icon: '🛠️', title: { zh: '工具大师', en: 'Power Tooler' }, description: { zh: '累计 100 次工具调用', en: '100 tool calls' } },
+    c => c.toolCalls >= 100, { rarity: 'rare', xp: 150 },
+  ),
+  fromCounterCondition(
+    { id: 'ten-sessions', icon: '📚', title: { zh: '会话收藏家', en: 'Session Collector' }, description: { zh: '累计使用 10 个会话', en: 'Use 10 sessions' } },
+    c => c.sessions >= 10, { rarity: 'uncommon', xp: 50 },
+  ),
+  fromCounterCondition(
+    { id: 'streak-3', icon: '🔥', title: { zh: '三日之约', en: 'Three-Day Streak' }, description: { zh: '连续 3 天使用', en: '3 consecutive active days' } },
+    c => c.streakDays >= 3, { rarity: 'uncommon', xp: 50 },
+  ),
+  fromCounterCondition(
+    { id: 'streak-7', icon: '🌋', title: { zh: '七日火山', en: 'Week on Fire' }, description: { zh: '连续 7 天使用', en: '7 consecutive active days' } },
+    c => c.streakDays >= 7, { rarity: 'legendary', xp: 500 },
+  ),
+]
+
+/** Highest value across a path→count map (0 when empty). */
+function maxValue(map: Record<string, number>): number {
+  let max = 0
+  for (const value of Object.values(map)) if (value > max) max = value
+  return max
+}
+
+/**
+ * The first batch of behavior achievements (v0.2). Session-scoped: each reads
+ * `ctx.session`, which the reducer resets per session, so behavior never leaks
+ * across sessions. Thresholds are the literal spec from Task 05.
+ */
+export const BEHAVIOR_ACHIEVEMENTS: readonly AchievementDef[] = [
   {
-    id: 'first-turn',
-    icon: '🎬',
-    title: { zh: '初次登场', en: 'First Turn' },
-    description: { zh: '完成第一个回合', en: 'Complete your first turn' },
-    condition: c => c.turns >= 1,
+    id: 'deja-vu',
+    icon: '🔁',
+    title: { zh: '似曾相识', en: 'Déjà Vu' },
+    description: { zh: '同一文件修改 5 次', en: 'Edit the same file 5 times' },
+    flavorText: { zh: '你确定这不是第 6 次了吗？', en: 'Are you sure this is not the 6th time?' },
+    rarity: 'uncommon',
+    xp: 30,
+    scope: 'session',
+    evaluate: ctx => ({ unlocked: maxValue(ctx.session.filesEdited) >= 5, progress: maxValue(ctx.session.filesEdited), target: 5 }),
   },
   {
-    id: 'ten-turns',
-    icon: '🔟',
-    title: { zh: '渐入佳境', en: 'Warming Up' },
-    description: { zh: '累计完成 10 个回合', en: 'Complete 10 turns' },
-    condition: c => c.turns >= 10,
+    id: 'rabbit-hole',
+    icon: '🕳',
+    title: { zh: '兔子洞', en: 'Rabbit Hole' },
+    description: { zh: '第一次修改前读取 20 个文件', en: 'Read 20 files before your first edit' },
+    flavorText: { zh: '你只是看看，对吧？', en: 'You were just looking, right?' },
+    rarity: 'rare',
+    xp: 40,
+    scope: 'session',
+    evaluate: ctx => ({ unlocked: ctx.session.readsBeforeFirstEdit >= 20, progress: ctx.session.readsBeforeFirstEdit, target: 20 }),
   },
   {
-    id: 'hundred-turns',
-    icon: '💯',
-    title: { zh: '百炼成钢', en: 'Century Club' },
-    description: { zh: '累计完成 100 个回合', en: 'Complete 100 turns' },
-    condition: c => c.turns >= 100,
+    id: 'yolo',
+    icon: '💣',
+    title: { zh: '先斩后奏', en: 'YOLO' },
+    description: { zh: '第一次测试前修改 8 个文件', en: 'Edit 8 files before your first test' },
+    flavorText: { zh: '测试？那是什么？', en: 'Tests? What are those?' },
+    rarity: 'epic',
+    xp: 60,
+    scope: 'session',
+    evaluate: ctx => ({ unlocked: ctx.session.editsBeforeFirstTest >= 8, progress: ctx.session.editsBeforeFirstTest, target: 8 }),
   },
   {
-    id: 'first-tool',
-    icon: '🔧',
-    title: { zh: '工具初体验', en: 'Tool Time' },
-    description: { zh: '首次让 agent 调用工具', en: 'First tool call' },
-    condition: c => c.toolCalls >= 1,
-  },
-  {
-    id: 'hundred-tools',
-    icon: '🛠️',
-    title: { zh: '工具大师', en: 'Power Tooler' },
-    description: { zh: '累计 100 次工具调用', en: '100 tool calls' },
-    condition: c => c.toolCalls >= 100,
-  },
-  {
-    id: 'ten-sessions',
-    icon: '📚',
-    title: { zh: '会话收藏家', en: 'Session Collector' },
-    description: { zh: '累计使用 10 个会话', en: 'Use 10 sessions' },
-    condition: c => c.sessions >= 10,
-  },
-  {
-    id: 'streak-3',
+    id: 'it-works-eventually',
     icon: '🔥',
-    title: { zh: '三日之约', en: 'Three-Day Streak' },
-    description: { zh: '连续 3 天使用', en: '3 consecutive active days' },
-    condition: c => c.streakDays >= 3,
+    title: { zh: '终于通了', en: 'It Works Eventually' },
+    description: { zh: '测试失败 5 次后成功', en: 'Pass after 5 failed tests' },
+    flavorText: { zh: '失败是成功之母，但你未免太孝顺了。', en: 'Failure teaches success, but you were a little too filial.' },
+    rarity: 'epic',
+    xp: 80,
+    scope: 'session',
+    evaluate: ctx => ({ unlocked: ctx.session.tests.failed >= 5 && ctx.session.tests.lastOutcome === 'pass', progress: ctx.session.tests.failed, target: 5 }),
   },
   {
-    id: 'streak-7',
-    icon: '🌋',
-    title: { zh: '七日火山', en: 'Week on Fire' },
-    description: { zh: '连续 7 天使用', en: '7 consecutive active days' },
-    condition: c => c.streakDays >= 7,
+    id: 'surely-this-time',
+    icon: '🎰',
+    title: { zh: '这次一定', en: 'Surely This Time' },
+    description: { zh: '同一测试命令连续失败 5 次', en: 'Fail the same test command 5 times in a row' },
+    flavorText: { zh: '再跑一次肯定绿。', en: 'One more run and it will be green.' },
+    rarity: 'rare',
+    xp: 50,
+    scope: 'session',
+    evaluate: ctx => ({ unlocked: ctx.session.failingStreak >= 5, progress: ctx.session.failingStreak, target: 5 }),
+  },
+  {
+    id: 'touch-grass',
+    icon: '🌱',
+    title: { zh: '出门走走', en: 'Touch Grass' },
+    description: { zh: '单会话工具调用 100 次', en: '100 tool calls in one session' },
+    flavorText: { zh: '放下键盘，去晒晒太阳。', en: 'Step away from the keyboard and touch some grass.' },
+    rarity: 'uncommon',
+    xp: 30,
+    scope: 'session',
+    evaluate: ctx => ({ unlocked: ctx.session.toolCalls >= 100, progress: ctx.session.toolCalls, target: 100 }),
   },
 ]
+
+/** All built-in achievements: lifetime counters + first behavior batch. */
+export const BUILTIN_ACHIEVEMENTS: readonly AchievementDef[] = [...COUNTER_ACHIEVEMENTS, ...BEHAVIOR_ACHIEVEMENTS]
+
+/** The built-in achievements expressed as the default Pack (same registry path). */
+export const BUILTIN_PACK: AchievementPack = {
+  id: 'builtin',
+  version: '0.2.0',
+  name: { zh: '内置', en: 'Built-in' },
+  achievements: BUILTIN_ACHIEVEMENTS,
+}
+
+// ---- serialization / settings ----
 
 /** Serialized achievement view the browser half can render (no functions). */
 export interface AchievementView {
@@ -170,14 +292,28 @@ export interface AchievementView {
   icon: string
   title: LocalizedText
   description: LocalizedText
+  flavorText?: LocalizedText
+  rarity: AchievementRarity
+  xp: number
+  scope: AchievementScope
+  hidden: boolean
 }
 
-/** Strip the predicate so a definition is safe to send to the browser half. */
+/** Strip the `evaluate` predicate so a definition is safe to send to the browser half. */
 export function toAchievementView(def: AchievementDef): AchievementView {
-  return { id: def.id, icon: def.icon, title: def.title, description: def.description }
+  return {
+    id: def.id,
+    icon: def.icon,
+    title: def.title,
+    description: def.description,
+    flavorText: def.flavorText,
+    rarity: def.rarity,
+    xp: def.xp,
+    scope: def.scope,
+    hidden: def.hidden ?? false,
+  }
 }
 
-/** The configured runtime shape the Host exposes to the browser half. */
 export interface AchievementsSettings {
   /** Master switch for unlock toasts + badge updates. */
   enabled: boolean

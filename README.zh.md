@@ -4,7 +4,7 @@
 
 [English](./README.md) | 简体中文
 
-**DeepSeek Harness（DSH）** 的游戏化插件：它默默统计你的真实使用（回合、工具调用、会话、连续天数），达到里程碑即解锁成就，实时弹 toast 庆祝，在设置页展示徽章墙。状态跨会话持久化（存在 DSH 主目录），所有统计走官方事件扩展缝（`session/event` 的 `turn/end` + `tools/result`），**不改动任何核心代码**。
+**DeepSeek Harness（DSH）** 的游戏化插件：它默默统计你的真实使用（回合、工具调用、会话、连续天数），达到里程碑即解锁成就，实时弹 toast 庆祝，在设置页展示徽章墙。状态跨会话持久化（存在 DSH 主目录），所有统计走官方 `session/event` 事件缝（`turn/end`、`tool/call`、`tool/result`），**不改动任何核心代码**。
 
 ## ✨ 内置成就
 
@@ -18,6 +18,17 @@
 | 📚 会话收藏家 | 累计 10 个会话 |
 | 🔥 三日之约 | 连续 3 天使用 |
 | 🌋 七日火山 | 连续 7 天使用 |
+
+行为成就（单会话，v0.2）：
+
+| 成就 | 条件 |
+|---|---|
+| 🔁 似曾相识 | 同一文件修改 5 次 |
+| 🕳 兔子洞 | 第一次修改前读取 20 个文件 |
+| 💣 先斩后奏 | 第一次测试前修改 8 个文件 |
+| 🔥 终于通了 | 测试失败 5 次后成功 |
+| 🎰 这次一定 | 同一测试命令连续失败 5 次 |
+| 🌱 出门走走 | 单会话工具调用 100 次 |
 
 ## 📦 安装
 
@@ -41,18 +52,30 @@ dsh plugin --profile web add ./dsh-achievements
    - 解锁新成就时右下角弹出 toast；
 2. **设置 → 🏆 成就**：查看四个计数器（回合/工具/会话/连续天数）与徽章墙（已解锁带时间戳，未解锁置灰）。
 
-## 🔌 开发者：`ctx.achievements` 服务
+## 🔌 开发者：`ctx.achievements` SDK
+
+从宿主插件注册自定义成就（内置与第三方走同一条求值路径）：
 
 ```ts
-export const inject = ['slots', 'achievements']
+export const inject = ['achievements']
 
 export function apply(ctx: Context): void {
-  void ctx.achievements.refresh()           // 重新拉取状态
-  const ids = ctx.achievements.unlockedIds() // 已解锁成就 id 列表
+  ctx.achievements.register({
+    id: 'python-first-run',
+    icon: '🐍',
+    title: { zh: '蟒蛇出洞', en: 'First Python Run' },
+    description: { zh: '首次运行 Python', en: 'Run Python for the first time' },
+    rarity: 'uncommon',
+    xp: 20,
+    scope: 'session',
+    evaluate: ctx => ({ unlocked: ctx.session.toolCalls >= 1 }),
+  })
 }
 ```
 
-> 扩展点：`dsh-achievements` 也导出纯引擎（`applyEvent` / `BUILTIN_ACHIEVEMENTS` / `AchievementDef`），未来可在服务端注册自定义成就。
+也可注册整个 Pack：`ctx.achievements.registerPack({ id, version, name, achievements })`。重复 id 会抛异常。完整指南见 `docs/SDK.md`，示例见 `examples/python-pack.ts`。
+
+浏览器侧，其它客户端插件通过 `ctx.achievementsState.refresh()` / `ctx.achievementsState.unlockedIds()` 读取状态。
 
 ## 🛠️ 本地开发
 
