@@ -64,7 +64,7 @@ dsh plugin --profile web add ./dsh-achievements
 ## 🎮 Usage
 
 1. Chat and let the agent work: turns, tool calls, new sessions and daily activity accumulate; a toast pops when a new achievement unlocks.
-2. **Settings → 🏆 成就**: seven lifetime counters (turns / tool calls / sessions / active days / file reads / file edits / test runs) plus a separate streak line, the seven `/5` growth routes, and the badge wall split into "成长里程碑 / 特殊行为" (unlocked with timestamps, locked dimmed); special behavior is further grouped into "经典行为 / 会话马拉松 / 单轮深潜 / 工具齐射 / 时间异象", each trajectory chain showing `/5` progress.
+2. **Settings → 🏆 成就**: seven lifetime counters (turns / tool calls / sessions / active days / file reads / file edits / test runs) plus a separate streak line; the badge wall is collapsed into the seven growth routes and the special chains, each group header shows its progress, and a single "all / locked / unlocked" filter narrows the cards. Special behavior groups into "其它 / 经典行为, 连续作战, 行为狂人, 会话马拉松, 单轮深潜, 工具齐射, 时间异象"; unlocked cards carry timestamps, locked cards are dimmed, and hidden achievements stay `???` until unlocked.
 
 ## 🔌 For developers: the `ctx.achievements` SDK
 
