@@ -1,4 +1,4 @@
-# dsh-achievements 🏆
+# dsh-achievements 🏆[![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
 
 > **DeepSeek Harness（DSH）** 的游戏化插件：68 个成就横跨七条五档成长线、会话行为徽章与轨迹链——实时解锁 toast、设置页徽章墙、可分享成就卡、Agent Wrapped，以及面向第三方 Pack 的公开 SDK。**零核心改动。**
 
