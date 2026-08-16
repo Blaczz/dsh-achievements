@@ -18,7 +18,8 @@ import { createAchievementRegistry, type AchievementPack, type AchievementsSdk }
 import { buildContext } from './reducer.ts'
 import { loadState, saveState, type AchievementState } from './state.ts'
 import {
-  buildToolCallEvent, buildTurnEndEvent, classifyCodeDispatch, classifyTool, parseToolArguments,
+  buildAssistantMessageEvent, buildStepEndEvent, buildStepStartEvent, buildToolCallEvent,
+  buildTurnEndEvent, classifyCodeDispatch, classifyTool, parseToolArguments,
   type AchievementEvent, type ToolSummary,
 } from './events.ts'
 import { ACHIEVEMENTS_API_PREFIX, ACHIEVEMENTS_EVENTS_API_PATH, ACHIEVEMENTS_STATE_API_PATH, unlockEventFrame } from './api.ts'
@@ -26,7 +27,7 @@ import { ACHIEVEMENTS_API_PREFIX, ACHIEVEMENTS_EVENTS_API_PATH, ACHIEVEMENTS_STA
 // Public SDK surface (pure engine + model + classifier + reducer).
 export {
   applyEvent, BEHAVIOR_ACHIEVEMENTS, BUILTIN_ACHIEVEMENTS, COUNTER_ACHIEVEMENTS, LIFETIME_ACHIEVEMENTS,
-  MILESTONE_ACHIEVEMENTS, reconcileLifetimeAchievements,
+  MILESTONE_ACHIEVEMENTS, TRAJECTORY_ACHIEVEMENTS, reconcileLifetimeAchievements,
   computeProgress, countersOf, fromCounterCondition, toAchievementView, DEFAULT_ACHIEVEMENTS_SETTINGS,
 } from './achievements.ts'
 export type {
@@ -40,9 +41,10 @@ export {
 } from './state.ts'
 export type { AchievementState, ProfileState, SessionAchievementState, TestCounters } from './state.ts'
 export {
-  buildToolCallEvent, buildTurnEndEvent, classifyCodeDispatch, classifyTool, isDependencyPath, isTestCommand, parseToolArguments,
+  buildAssistantMessageEvent, buildStepEndEvent, buildStepStartEvent, buildToolCallEvent,
+  buildTurnEndEvent, classifyCodeDispatch, classifyTool, isDependencyPath, isTestCommand, parseToolArguments,
 } from './events.ts'
-export type { AchievementEvent, ToolKind, ToolSummary } from './events.ts'
+export type { AchievementEvent, AchievementTokenUsage, ToolKind, ToolSummary } from './events.ts'
 export { buildContext, reduceState, yesterdayOf } from './reducer.ts'
 export type { AchievementContext } from './reducer.ts'
 export { levelOf, xpForLevel, XP_PER_LEVEL, RARITY_META } from './gamification.ts'
@@ -53,7 +55,7 @@ export {
 export type { Persona, ProfileViewModel, RarityCount, SessionSummary } from './profile.ts'
 export {
   buildAchievementCard, buildAgentWrapped, buildShareText, chainProgressOf,
-  BUILTIN_CHAINS, MILESTONE_CHAINS, SPECIAL_CHAINS,
+  BUILTIN_CHAINS, MILESTONE_CHAINS, SPECIAL_CHAINS, TRAJECTORY_CHAINS,
 } from './share.ts'
 export type { AchievementCard, AchievementChain, AgentWrapped, ChainProgress } from './share.ts'
 export { ACHIEVEMENTS_API_PREFIX, ACHIEVEMENTS_STATE_API_PATH } from './api.ts'
@@ -153,6 +155,18 @@ export function apply(ctx: Context): void {
     const sessionId = String(session.id)
     if (event.type === 'turn/end') {
       applyAchievementEvent(buildTurnEndEvent(sessionId, event.seq))
+    } else if (event.type === 'step/start') {
+      // Opens one step (model call + its tool executions). Feeds the openStep
+      // identity + durable start timestamp for request-duration pairing.
+      applyAchievementEvent(buildStepStartEvent(sessionId, event.seq, event.time, event.data.turn, event.data.step))
+    } else if (event.type === 'assistant/message') {
+      // Assembled assistant message (low-frequency boundary, not a chunk).
+      // `usage` is the installed `TokenUsage`; P7 keeps it in the standard event
+      // without persisting token metrics yet.
+      const data = event.data
+      applyAchievementEvent(buildAssistantMessageEvent(sessionId, event.seq, event.time, data.turn, data.step, data.usage))
+    } else if (event.type === 'step/end') {
+      applyAchievementEvent(buildStepEndEvent(sessionId, event.seq, event.time, event.data.turn, event.data.step))
     } else if (event.type === 'tool/call') {
       const summary = classifyTool(event.data.name, parseToolArguments(event.data.arguments))
       pendingCalls.set(String(event.data.callId), summary)

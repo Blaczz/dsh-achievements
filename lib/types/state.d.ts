@@ -71,6 +71,32 @@ export interface SessionAchievementState {
     unlocked: string[];
     /** XP gained during this session (for the session report). */
     xpGained: number;
+    /** Distinct turns in this session that have at least one closed step. */
+    trajectoryTurns: number;
+    /** Last turn number already counted into `trajectoryTurns`. */
+    lastCountedTrajectoryTurn: number | null;
+    /** Total closed steps in this session (one per `step/end`). */
+    steps: number;
+    /** Turn currently being counted for per-turn step depth. */
+    currentTurnNumber: number | null;
+    /** Closed steps accumulated in `currentTurnNumber`. */
+    currentTurnSteps: number;
+    /** Maximum closed-step count observed in any one turn. */
+    maxStepsInTurn: number;
+    /** Currently open step identity + durable start timestamp (request pairing). */
+    openStep: {
+        turn: number;
+        step: number;
+        startedAt: number;
+    } | null;
+    /** Settled tool invocations observed while `openStep` is active. */
+    currentStepToolCalls: number;
+    /** Maximum tool calls observed in one step. */
+    maxToolCallsInStep: number;
+    /** Most recent assembled-model request duration (ms), null if unmatched. */
+    lastRequestDurationMs: number | null;
+    /** Maximum matched request duration observed in this session (ms). */
+    maxRequestDurationMs: number;
 }
 export interface AchievementState {
     version: typeof STATE_VERSION;

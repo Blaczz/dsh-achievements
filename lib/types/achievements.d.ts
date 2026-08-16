@@ -6,7 +6,7 @@
  */
 import { type AchievementEvent } from './events.ts';
 import { type AchievementContext } from './reducer.ts';
-import { type AchievementState, type ProfileState } from './state.ts';
+import { type AchievementState, type ProfileState, type SessionAchievementState } from './state.ts';
 import type { AchievementPack } from './sdk.ts';
 export interface LocalizedText {
     zh: string;
@@ -104,6 +104,27 @@ interface LifetimeMilestoneSpec {
  * write their own `evaluate`; this is not added to the public SDK surface.
  */
 export declare function createLifetimeMilestone(spec: LifetimeMilestoneSpec): AchievementDef;
+/** Internal spec for one Session threshold milestone (not public SDK surface). */
+interface SessionMilestoneSpec {
+    id: string;
+    icon: string;
+    title: LocalizedText;
+    description: LocalizedText;
+    flavorText?: LocalizedText;
+    rarity: AchievementRarity;
+    xp: number;
+    target: number;
+    hidden?: boolean;
+    /** Reads the session metric this milestone measures from one session bucket. */
+    value(session: SessionAchievementState): number;
+}
+/**
+ * Build one Session threshold achievement with a standard
+ * `{ unlocked, progress, target }` evaluation. `progress` is the raw metric, not
+ * clamped, mirroring `createLifetimeMilestone`. Kept internal: third parties
+ * still write their own `evaluate`; this is not added to the public SDK surface.
+ */
+export declare function createSessionMilestone(spec: SessionMilestoneSpec): AchievementDef;
 /** Legacy lifetime counter achievements (v1), carried into the v2 model. */
 export declare const COUNTER_ACHIEVEMENTS: readonly AchievementDef[];
 /** P6 lifetime progression milestones (30 new, across 7 five-tier chains). */
@@ -116,7 +137,18 @@ export declare const LIFETIME_ACHIEVEMENTS: readonly AchievementDef[];
  * across sessions. Thresholds are the literal spec from Task 05.
  */
 export declare const BEHAVIOR_ACHIEVEMENTS: readonly AchievementDef[];
-/** All built-in achievements: lifetime counters + P6 milestones + behavior batch. */
+/**
+ * P7 trajectory / session-behavior batch: four five-tier session chains
+ * (session-marathon / turn-depth / tool-barrage / time-anomaly), 20 achievements
+ * total. Each reads one O(1) session metric via `createSessionMilestone`.
+ *
+ * Behavior XP stays below the Lifetime milestone scale (10 / 20 / 40 / 70 / 120)
+ * so a repeatably constructible session condition never out-earns lifetime work.
+ * The duration chain reads seconds (`Math.floor(ms / 1000)`) so the Badge Wall
+ * shows a sane `30 / 30` instead of a raw-millisecond `30000 / 30000`.
+ */
+export declare const TRAJECTORY_ACHIEVEMENTS: readonly AchievementDef[];
+/** All built-in achievements: lifetime counters + P6 milestones + behavior + P7 trajectory. */
 export declare const BUILTIN_ACHIEVEMENTS: readonly AchievementDef[];
 /** The built-in achievements expressed as the default Pack (same registry path). */
 export declare const BUILTIN_PACK: AchievementPack;

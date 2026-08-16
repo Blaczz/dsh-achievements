@@ -6,7 +6,7 @@
 
 A **DeepSeek Harness (DSH)** gamification plugin that quietly counts your real usage (turns, tool calls, sessions, consecutive days) and unlocks achievements at milestones, toasting in real time and showing a badge wall in the settings page. State survives across sessions (stored in the DSH home directory), and all counting rides the official `session/event` seam (`turn/end`, `tool/call`, `tool/result`) — **no core changes**.
 
-## ✨ Built-in achievements (48)
+## ✨ Built-in achievements (68)
 
 Achievements come in two tracks. Each of the **seven lifetime progression lines** has five tiers, always `common → uncommon → rare → epic → legendary` (10 / 30 / 75 / 175 / 400 XP for new milestones):
 
@@ -35,7 +35,16 @@ Plus **special achievements**: streak days (`streak-3` / `streak-7`), the early 
 | 🦴 Dependency Archaeologist | read a file inside a dependency directory |
 | 🗿 Gigachad | read, edit and pass a test within 5 tool calls |
 
-Lifetime counters (`turns`, `toolCalls`, `sessions`, `activeDays`, `fileReads`, `fileEdits`, `testRuns`) live on the profile and never depend on the 64-session retention window. On upgrade, missing counters are conservatively recovered from the retained sessions as a provable lower bound, and already-satisfied lifetime milestones are silently unlocked once (no toast storm).
+P7 adds 20 **session trajectory achievements** across four five-tier chains (rarity always `common → uncommon → rare → epic → legendary`, XP 10 / 20 / 40 / 70 / 120). They read only low-frequency boundaries (`step/start`, `assistant/message`, `step/end`, settled tool calls) and never persist per-token chunks:
+
+| Chain | Metric | Five thresholds |
+|---|---|---|
+| 💬 Session Marathon | distinct closed-step turns in one session | 5 / 20 / 50 / 100 / 200 |
+| 🪜 Turn Depth | closed steps within a single turn | 5 / 20 / 50 / 100 / 500 |
+| 🔧 Tool Barrage | settled tool calls within a single step (incl. Code Mode sub-calls) | 5 / 10 / 25 / 50 / 100 |
+| ⏳ Time Anomaly | single model-request think duration (`step/start → assistant/message`, hidden) | 30s / 100s / 300s / 500s / 1000s |
+
+Lifetime counters (`turns`, `toolCalls`, `sessions`, `activeDays`, `fileReads`, `fileEdits`, `testRuns`) live on the profile and never depend on the 64-session retention window. On upgrade, missing counters are conservatively recovered from the retained sessions as a provable lower bound, and already-satisfied lifetime milestones are silently unlocked once (no toast storm). P7 trajectory achievements are non-retroactive session behavior and are never backfilled.
 
 ## 📦 Install
 
@@ -55,7 +64,7 @@ dsh plugin --profile web add ./dsh-achievements
 ## 🎮 Usage
 
 1. Chat and let the agent work: turns, tool calls, new sessions and daily activity accumulate; a toast pops when a new achievement unlocks.
-2. **Settings → 🏆 成就**: seven lifetime counters (turns / tool calls / sessions / active days / file reads / file edits / test runs) plus a separate streak line, the seven `/5` growth routes, and the badge wall split into "成长里程碑 / 特殊行为" (unlocked with timestamps, locked dimmed).
+2. **Settings → 🏆 成就**: seven lifetime counters (turns / tool calls / sessions / active days / file reads / file edits / test runs) plus a separate streak line, the seven `/5` growth routes, and the badge wall split into "成长里程碑 / 特殊行为" (unlocked with timestamps, locked dimmed); special behavior is further grouped into "经典行为 / 会话马拉松 / 单轮深潜 / 工具齐射 / 时间异象", each trajectory chain showing `/5` progress.
 
 ## 🔌 For developers: the `ctx.achievements` SDK
 

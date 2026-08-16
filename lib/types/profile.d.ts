@@ -33,6 +33,12 @@ export interface ProfileViewModel {
 export declare function buildProfileView(state: AchievementState, views: readonly AchievementView[]): ProfileViewModel;
 export interface SessionSummary {
     sessionId: string;
+    /** Distinct closed-step turns in this session (P7 trajectory). */
+    turns: number;
+    /** Total closed steps in this session (P7 trajectory). */
+    steps: number;
+    /** Deepest single-turn step depth observed in this session (P7 trajectory). */
+    maxStepsInTurn: number;
     toolCalls: number;
     filesRead: number;
     filesEdited: number;

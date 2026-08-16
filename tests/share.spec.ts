@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { BUILTIN_ACHIEVEMENTS, toAchievementView } from '../src/achievements.ts'
 import {
-  BUILTIN_CHAINS, MILESTONE_CHAINS, SPECIAL_CHAINS, buildAchievementCard, buildAgentWrapped, buildShareText, chainProgressOf,
+  BUILTIN_CHAINS, MILESTONE_CHAINS, SPECIAL_CHAINS, TRAJECTORY_CHAINS, buildAchievementCard, buildAgentWrapped, buildShareText, chainProgressOf,
 } from '../src/share.ts'
 import { createInitialSessionState, createInitialState } from '../src/state.ts'
 
@@ -24,7 +24,7 @@ describe('buildShareText', () => {
     state.profile.unlocked = { 'first-turn': 1, 'streak-7': 2 }
     const text = buildShareText(state, VIEWS)
     expect(text).toContain('Lv.2')
-    expect(text).toContain('2/48')
+    expect(text).toContain('2/68')
     const legendary = text.indexOf('七日火山')
     const common = text.indexOf('初次登场')
     expect(legendary).toBeGreaterThan(-1)
@@ -80,8 +80,15 @@ describe('achievement chains', () => {
 
   it('splits seven milestone chains from the special chains', () => {
     expect(MILESTONE_CHAINS).toHaveLength(7)
-    expect(SPECIAL_CHAINS.map(c => c.id)).toEqual(['streaks', 'behavior'])
+    expect(SPECIAL_CHAINS.map(c => c.id)).toEqual(['streaks', 'behavior', 'session-marathon', 'turn-depth', 'tool-barrage', 'time-anomaly'])
     expect(BUILTIN_CHAINS).toEqual([...MILESTONE_CHAINS, ...SPECIAL_CHAINS])
+  })
+
+  it('exposes the four P7 trajectory chains with five nodes each', () => {
+    expect(TRAJECTORY_CHAINS.map(c => c.id)).toEqual(['session-marathon', 'turn-depth', 'tool-barrage', 'time-anomaly'])
+    for (const chain of TRAJECTORY_CHAINS) expect(chain.achievementIds).toHaveLength(5)
+    // Every trajectory chain is also surfaced as a special-chain progress row.
+    for (const chain of TRAJECTORY_CHAINS) expect(SPECIAL_CHAINS).toContain(chain)
   })
 
   it('only references built-in achievement ids', () => {

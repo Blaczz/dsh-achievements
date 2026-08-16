@@ -89,6 +89,29 @@ export interface SessionAchievementState {
   unlocked: string[]
   /** XP gained during this session (for the session report). */
   xpGained: number
+  // ---- P7 trajectory facts (O(1): current count + historical max only) ----
+  /** Distinct turns in this session that have at least one closed step. */
+  trajectoryTurns: number
+  /** Last turn number already counted into `trajectoryTurns`. */
+  lastCountedTrajectoryTurn: number | null
+  /** Total closed steps in this session (one per `step/end`). */
+  steps: number
+  /** Turn currently being counted for per-turn step depth. */
+  currentTurnNumber: number | null
+  /** Closed steps accumulated in `currentTurnNumber`. */
+  currentTurnSteps: number
+  /** Maximum closed-step count observed in any one turn. */
+  maxStepsInTurn: number
+  /** Currently open step identity + durable start timestamp (request pairing). */
+  openStep: { turn: number; step: number; startedAt: number } | null
+  /** Settled tool invocations observed while `openStep` is active. */
+  currentStepToolCalls: number
+  /** Maximum tool calls observed in one step. */
+  maxToolCallsInStep: number
+  /** Most recent assembled-model request duration (ms), null if unmatched. */
+  lastRequestDurationMs: number | null
+  /** Maximum matched request duration observed in this session (ms). */
+  maxRequestDurationMs: number
 }
 
 export interface AchievementState {
@@ -117,6 +140,17 @@ export function createInitialSessionState(): SessionAchievementState {
     failingStreak: 0,
     unlocked: [],
     xpGained: 0,
+    trajectoryTurns: 0,
+    lastCountedTrajectoryTurn: null,
+    steps: 0,
+    currentTurnNumber: null,
+    currentTurnSteps: 0,
+    maxStepsInTurn: 0,
+    openStep: null,
+    currentStepToolCalls: 0,
+    maxToolCallsInStep: 0,
+    lastRequestDurationMs: null,
+    maxRequestDurationMs: 0,
   }
 }
 
@@ -338,7 +372,31 @@ function normalizeSession(raw: Record<string, unknown>): SessionAchievementState
     ? raw.unlocked.filter((item): item is string => typeof item === 'string')
     : []
   session.xpGained = toNumber(raw.xpGained)
+  // P7 trajectory fields: additive evolution of the v2 session bucket. Old P6
+  // state simply defaults every field (no historical reconstruction — P7 session
+  // achievements are never reconciled/backfilled).
+  session.trajectoryTurns = toNumber(raw.trajectoryTurns)
+  session.lastCountedTrajectoryTurn = toNullableNumber(raw.lastCountedTrajectoryTurn)
+  session.steps = toNumber(raw.steps)
+  session.currentTurnNumber = toNullableNumber(raw.currentTurnNumber)
+  session.currentTurnSteps = toNumber(raw.currentTurnSteps)
+  session.maxStepsInTurn = toNumber(raw.maxStepsInTurn)
+  session.openStep = normalizeOpenStep(raw.openStep)
+  session.currentStepToolCalls = toNumber(raw.currentStepToolCalls)
+  session.maxToolCallsInStep = toNumber(raw.maxToolCallsInStep)
+  session.lastRequestDurationMs = toNullableNumber(raw.lastRequestDurationMs)
+  session.maxRequestDurationMs = toNumber(raw.maxRequestDurationMs)
   return session
+}
+
+/** A well-formed openStep needs all three finite-number fields; anything else → null. */
+function normalizeOpenStep(value: unknown): SessionAchievementState['openStep'] {
+  if (!isRecord(value)) return null
+  const { turn, step, startedAt } = value
+  if (typeof turn !== 'number' || !Number.isFinite(turn)) return null
+  if (typeof step !== 'number' || !Number.isFinite(step)) return null
+  if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return null
+  return { turn, step, startedAt }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

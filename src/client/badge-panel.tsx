@@ -5,13 +5,13 @@
  * separate streak line, the achievement grid split into "成长里程碑 / 特殊行为",
  * and the latest session report.
  */
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { AchievementsClient, AchievementsSnapshot } from './achievements-client.ts'
 import { RARITY_META } from '../gamification.ts'
 import { buildProfileView, buildSessionSummary } from '../profile.ts'
-import { MILESTONE_CHAINS, SPECIAL_CHAINS, buildAgentWrapped, buildShareText, chainProgressOf } from '../share.ts'
+import { MILESTONE_CHAINS, SPECIAL_CHAINS, TRAJECTORY_CHAINS, buildAgentWrapped, buildShareText, chainProgressOf } from '../share.ts'
 import type { AchievementProgressView, AchievementRarity, AchievementView } from '../achievements.ts'
 
 /** Injected business face: the shared client (see the client apply). */
@@ -45,6 +45,9 @@ const STAT_ROWS = [
 const RARITY_ORDER: readonly AchievementRarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary']
 
 const REPORT_ROWS = [
+  { key: 'turns', label: '回合' },
+  { key: 'steps', label: '步骤' },
+  { key: 'maxStepsInTurn', label: '最深单轮' },
   { key: 'toolCalls', label: '工具调用' },
   { key: 'filesRead', label: '读文件' },
   { key: 'filesEdited', label: '改文件' },
@@ -138,14 +141,22 @@ export function BadgePanel({ achievements }: BadgePanelProps) {
   const shareText = buildShareText(state, defs)
 
   // Milestone ids are derived from the seven chains (single source of truth),
-  // never hardcoded in JSX; everything else is a "special" achievement.
+  // never hardcoded in JSX; P7 trajectory ids from TRAJECTORY_CHAINS. The
+  // "classic" specials are whatever remains: streaks + the first behavior batch.
   const milestoneIds = new Set(MILESTONE_CHAINS.flatMap(chain => chain.achievementIds))
+  const trajectoryIds = new Set(TRAJECTORY_CHAINS.flatMap(chain => chain.achievementIds))
   const milestoneDefs = MILESTONE_CHAINS.flatMap(chain =>
     chain.achievementIds
       .map(id => defs.find(def => def.id === id))
       .filter((def): def is AchievementView => def !== undefined),
   )
-  const specialDefs = defs.filter(def => !milestoneIds.has(def.id))
+  const classicSpecialDefs = defs.filter(def => !milestoneIds.has(def.id) && !trajectoryIds.has(def.id))
+  const trajectoryDefs = TRAJECTORY_CHAINS.map(chain => ({
+    chain,
+    defs: chain.achievementIds
+      .map(id => defs.find(def => def.id === id))
+      .filter((def): def is AchievementView => def !== undefined),
+  }))
   const milestoneChains = MILESTONE_CHAINS.map(chain => chainProgressOf(chain, state.profile.unlocked))
   const specialChains = SPECIAL_CHAINS.map(chain => chainProgressOf(chain, state.profile.unlocked))
 
@@ -228,13 +239,26 @@ export function BadgePanel({ achievements }: BadgePanelProps) {
         ))}
       </div>
 
-      {/* Special achievements: streaks + behavior, registration order */}
+      {/* Special achievements: classic behavior, then one group per P7 chain.
+          Group membership is derived from browser-safe chain metadata, never
+          from hardcoded achievement ids in JSX. */}
       <div style={{ fontSize: 12, fontWeight: 600, opacity: 0.75, paddingBottom: 6 }}>特殊行为</div>
+      <div style={{ fontSize: 11, fontWeight: 600, opacity: 0.6, paddingBottom: 6 }}>经典行为</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 8, paddingBottom: 12 }}>
-        {specialDefs.map(def => (
+        {classicSpecialDefs.map(def => (
           <AchievementCard key={def.id} def={def} unlockedAt={state.profile.unlocked[def.id]} progress={snap.progress[def.id]} />
         ))}
       </div>
+      {trajectoryDefs.map(({ chain, defs: chainDefs }) => (
+        <Fragment key={chain.id}>
+          <div style={{ fontSize: 11, fontWeight: 600, opacity: 0.6, paddingBottom: 6 }}>{chain.title.zh}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 8, paddingBottom: 12 }}>
+            {chainDefs.map(def => (
+              <AchievementCard key={def.id} def={def} unlockedAt={state.profile.unlocked[def.id]} progress={snap.progress[def.id]} />
+            ))}
+          </div>
+        </Fragment>
+      ))}
 
       {/* Special chains: streaks + behavior, kept separate from the seven routes */}
       <div style={{ fontSize: 13, fontWeight: 700, padding: '4px 0 8px' }}>🎭 特殊链</div>

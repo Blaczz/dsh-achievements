@@ -205,3 +205,84 @@ describe('P6 lifetime counter backfill', () => {
     expect(state.profile.testFailures).toBe(0)
   })
 })
+
+describe('P7 session trajectory normalization', () => {
+  it('initializes the P7 trajectory fields to defaults for a fresh session', () => {
+    const s = createInitialSessionState()
+    expect(s.trajectoryTurns).toBe(0)
+    expect(s.lastCountedTrajectoryTurn).toBeNull()
+    expect(s.steps).toBe(0)
+    expect(s.currentTurnNumber).toBeNull()
+    expect(s.currentTurnSteps).toBe(0)
+    expect(s.maxStepsInTurn).toBe(0)
+    expect(s.openStep).toBeNull()
+    expect(s.currentStepToolCalls).toBe(0)
+    expect(s.maxToolCallsInStep).toBe(0)
+    expect(s.lastRequestDurationMs).toBeNull()
+    expect(s.maxRequestDurationMs).toBe(0)
+  })
+
+  it('loads a P6-persisted session missing every P7 field', () => {
+    const state = migrateState({ version: 2, profile: {}, sessions: { s1: { toolCalls: 3 } } })
+    expect(state.sessions.s1?.toolCalls).toBe(3)
+    expect(state.sessions.s1?.steps).toBe(0)
+    expect(state.sessions.s1?.openStep).toBeNull()
+    expect(state.sessions.s1?.maxRequestDurationMs).toBe(0)
+  })
+
+  it('preserves persisted P7 fields', () => {
+    const state = migrateState({
+      version: 2,
+      profile: {},
+      sessions: {
+        s1: {
+          trajectoryTurns: 7, lastCountedTrajectoryTurn: 4, steps: 12,
+          currentTurnNumber: 4, currentTurnSteps: 3, maxStepsInTurn: 9,
+          openStep: { turn: 5, step: 2, startedAt: 1234 },
+          currentStepToolCalls: 4, maxToolCallsInStep: 6,
+          lastRequestDurationMs: 117000, maxRequestDurationMs: 300000,
+        },
+      },
+    })
+    const s = state.sessions.s1!
+    expect(s.trajectoryTurns).toBe(7)
+    expect(s.lastCountedTrajectoryTurn).toBe(4)
+    expect(s.steps).toBe(12)
+    expect(s.maxStepsInTurn).toBe(9)
+    expect(s.openStep).toEqual({ turn: 5, step: 2, startedAt: 1234 })
+    expect(s.maxToolCallsInStep).toBe(6)
+    expect(s.lastRequestDurationMs).toBe(117000)
+    expect(s.maxRequestDurationMs).toBe(300000)
+  })
+
+  it('round-trips a null openStep through JSON', () => {
+    const state = createInitialState()
+    state.sessions.s1 = { ...createInitialSessionState(), openStep: null, steps: 2 }
+    const restored = migrateState(JSON.parse(JSON.stringify(state)))
+    expect(restored.sessions.s1?.openStep).toBeNull()
+    expect(restored.sessions.s1?.steps).toBe(2)
+  })
+
+  it('degrades a malformed openStep to null', () => {
+    for (const bad of [{}, { turn: 1 }, { turn: 1, step: 2 }, { turn: 'x', step: 2, startedAt: 1 }, { turn: 1, step: 2, startedAt: NaN }, 42, null]) {
+      const state = migrateState({ version: 2, profile: {}, sessions: { s1: { openStep: bad } } })
+      expect(state.sessions.s1?.openStep).toBeNull()
+    }
+  })
+
+  it('normalizes twice idempotently for P7 fields', () => {
+    const v2 = {
+      version: 2,
+      profile: {},
+      sessions: {
+        s1: {
+          trajectoryTurns: 7, lastCountedTrajectoryTurn: 4, steps: 12, maxStepsInTurn: 9,
+          openStep: null, maxToolCallsInStep: 6, lastRequestDurationMs: 117000, maxRequestDurationMs: 300000,
+        },
+      },
+    }
+    const once = migrateState(v2)
+    const twice = migrateState(JSON.parse(JSON.stringify(once)))
+    expect(twice.sessions.s1).toEqual(once.sessions.s1)
+  })
+})

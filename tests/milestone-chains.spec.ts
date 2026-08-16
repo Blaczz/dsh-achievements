@@ -1,4 +1,4 @@
-/** P6 catalog invariants: 48 built-ins, seven five-tier chains, legacy metadata lock. */
+/** P6/P7 catalog invariants: 68 built-ins, seven five-tier lifetime chains, legacy metadata lock. */
 import { describe, expect, it } from 'vitest'
 import { BUILTIN_ACHIEVEMENTS, type AchievementDef } from '../src/achievements.ts'
 import { MILESTONE_CHAINS } from '../src/share.ts'
@@ -15,8 +15,8 @@ function targetOf(def: AchievementDef): number | undefined {
 }
 
 describe('built-in catalog invariants (P6)', () => {
-  it('ships exactly 48 built-in achievements with unique ids', () => {
-    expect(BUILTIN_ACHIEVEMENTS).toHaveLength(48)
+  it('ships exactly 68 built-in achievements with unique ids', () => {
+    expect(BUILTIN_ACHIEVEMENTS).toHaveLength(68)
     const ids = BUILTIN_ACHIEVEMENTS.map(d => d.id)
     expect(new Set(ids).size).toBe(ids.length)
   })

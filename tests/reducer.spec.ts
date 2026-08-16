@@ -18,6 +18,18 @@ const shell = (command: string): ToolSummary => ({ kind: 'shell-command', name: 
 const test = (command: string): ToolSummary => ({ kind: 'test-run', name: 'bash', command })
 const other = (name = 'web_search'): ToolSummary => ({ kind: 'other', name })
 
+function stepStart(sessionId: string, seq: number, time: number, turn: number, step: number): AchievementEvent {
+  return { kind: 'step-start', sessionId, seq, time, turn, step }
+}
+
+function stepEnd(sessionId: string, seq: number, time: number, turn: number, step: number): AchievementEvent {
+  return { kind: 'step-end', sessionId, seq, time, turn, step }
+}
+
+function assistantMessage(sessionId: string, seq: number, time: number, turn: number, step: number): AchievementEvent {
+  return { kind: 'assistant-message', sessionId, seq, time, turn, step }
+}
+
 describe('reducer — tool activity', () => {
   it('updates filesRead and consecutiveReads for reads', () => {
     let state = reduceState(createInitialState(), tool('s', 0, read('a.txt')), '2026-01-01')
@@ -231,5 +243,179 @@ describe('yesterdayOf', () => {
     expect(yesterdayOf('2026-01-01')).toBe('2025-12-31')
     expect(yesterdayOf('2026-03-01')).toBe('2026-02-28')
     expect(yesterdayOf('2026-01-10')).toBe('2026-01-09')
+  })
+})
+
+describe('reducer — P7 step counting', () => {
+  it('1 step/start does not count a closed step', () => {
+    const state = reduceState(createInitialState(), stepStart('s', 0, 1000, 1, 1), '2026-01-01')
+    expect(state.sessions.s?.steps).toBe(0)
+    expect(state.sessions.s?.openStep).toEqual({ turn: 1, step: 1, startedAt: 1000 })
+  })
+
+  it('1 step/end → steps +1', () => {
+    const state = reduceState(createInitialState(), stepEnd('s', 0, 1000, 1, 1), '2026-01-01')
+    expect(state.sessions.s?.steps).toBe(1)
+  })
+
+  it('5 step/end in the same turn → currentTurnSteps=5, maxStepsInTurn=5', () => {
+    let state = createInitialState()
+    for (let i = 0; i < 5; i += 1) state = reduceState(state, stepEnd('s', i, 1000 + i, 1, i + 1), '2026-01-01')
+    expect(state.sessions.s?.currentTurnSteps).toBe(5)
+    expect(state.sessions.s?.maxStepsInTurn).toBe(5)
+  })
+
+  it('a new turn resets currentTurnSteps but keeps the max', () => {
+    let state = createInitialState()
+    for (let i = 0; i < 5; i += 1) state = reduceState(state, stepEnd('s', i, 1000, 1, i + 1), '2026-01-01')
+    state = reduceState(state, stepEnd('s', 5, 2000, 2, 1), '2026-01-01')
+    expect(state.sessions.s?.currentTurnSteps).toBe(1)
+    expect(state.sessions.s?.maxStepsInTurn).toBe(5)
+  })
+
+  it('turn number jumps still count +1 per distinct observed closed turn', () => {
+    let state = reduceState(createInitialState(), stepEnd('s', 0, 1000, 1, 1), '2026-01-01')
+    state = reduceState(state, stepEnd('s', 1, 1000, 5, 1), '2026-01-01')
+    expect(state.sessions.s?.trajectoryTurns).toBe(2)
+  })
+
+  it('500-step loop (no real model) yields steps=500, maxStepsInTurn=500', () => {
+    let state = createInitialState()
+    for (let i = 0; i < 500; i += 1) state = reduceState(state, stepEnd('s', i, 1000 + i, 1, i + 1), '2026-01-01')
+    expect(state.sessions.s?.steps).toBe(500)
+    expect(state.sessions.s?.maxStepsInTurn).toBe(500)
+  })
+})
+
+describe('reducer — P7 session turn counting', () => {
+  it('multiple steps in turn 1 keep trajectoryTurns=1', () => {
+    let state = reduceState(createInitialState(), stepEnd('s', 0, 1000, 1, 1), '2026-01-01')
+    state = reduceState(state, stepEnd('s', 1, 1000, 1, 2), '2026-01-01')
+    expect(state.sessions.s?.trajectoryTurns).toBe(1)
+  })
+
+  it('the first step/end of turn 2 → trajectoryTurns=2', () => {
+    let state = reduceState(createInitialState(), stepEnd('s', 0, 1000, 1, 1), '2026-01-01')
+    state = reduceState(state, stepEnd('s', 1, 1000, 2, 1), '2026-01-01')
+    expect(state.sessions.s?.trajectoryTurns).toBe(2)
+  })
+
+  it('turn/end without step/end never bumps trajectoryTurns', () => {
+    // A lone turn/end creates no session bucket, and legacy profile.turns still +1.
+    let state = reduceState(createInitialState(), turnEnd('s', 0), '2026-01-01')
+    expect(state.sessions.s).toBeUndefined()
+    expect(state.profile.turns).toBe(1)
+    // A turn/end after a closed step must not add a second trajectory turn.
+    state = reduceState(createInitialState(), stepEnd('s', 0, 1000, 1, 1), '2026-01-01')
+    state = reduceState(state, turnEnd('s', 1), '2026-01-01')
+    expect(state.sessions.s?.trajectoryTurns).toBe(1)
+  })
+})
+
+describe('reducer — P7 request duration', () => {
+  it('pairs a matching start/message into the correct ms duration', () => {
+    let state = reduceState(createInitialState(), stepStart('s', 0, 1000, 1, 1), '2026-01-01')
+    state = reduceState(state, assistantMessage('s', 1, 118000, 1, 1), '2026-01-01')
+    expect(state.sessions.s?.lastRequestDurationMs).toBe(117000)
+    expect(state.sessions.s?.maxRequestDurationMs).toBe(117000)
+  })
+
+  it('a second shorter request does not lower the max', () => {
+    let state = reduceState(createInitialState(), stepStart('s', 0, 1000, 1, 1), '2026-01-01')
+    state = reduceState(state, assistantMessage('s', 1, 118000, 1, 1), '2026-01-01')
+    state = reduceState(state, stepEnd('s', 2, 118000, 1, 1), '2026-01-01')
+    state = reduceState(state, stepStart('s', 3, 200000, 1, 2), '2026-01-01')
+    state = reduceState(state, assistantMessage('s', 4, 210000, 1, 2), '2026-01-01')
+    expect(state.sessions.s?.lastRequestDurationMs).toBe(10000)
+    expect(state.sessions.s?.maxRequestDurationMs).toBe(117000)
+  })
+
+  it('a second longer request updates the max', () => {
+    let state = reduceState(createInitialState(), stepStart('s', 0, 1000, 1, 1), '2026-01-01')
+    state = reduceState(state, assistantMessage('s', 1, 118000, 1, 1), '2026-01-01')
+    state = reduceState(state, stepEnd('s', 2, 118000, 1, 1), '2026-01-01')
+    state = reduceState(state, stepStart('s', 3, 200000, 1, 2), '2026-01-01')
+    state = reduceState(state, assistantMessage('s', 4, 400000, 1, 2), '2026-01-01')
+    expect(state.sessions.s?.maxRequestDurationMs).toBe(200000)
+  })
+
+  it('a message without a matching start is ignored', () => {
+    const state = reduceState(createInitialState(), assistantMessage('s', 0, 5000, 1, 1), '2026-01-01')
+    expect(state.sessions.s).toBeUndefined()
+  })
+
+  it('a message with a mismatched turn/step is ignored', () => {
+    let state = reduceState(createInitialState(), stepStart('s', 0, 1000, 1, 1), '2026-01-01')
+    state = reduceState(state, assistantMessage('s', 1, 5000, 1, 2), '2026-01-01')
+    expect(state.sessions.s?.lastRequestDurationMs).toBeNull()
+    expect(state.sessions.s?.maxRequestDurationMs).toBe(0)
+  })
+
+  it('clamps a time inversion to 0 (no negative duration)', () => {
+    let state = reduceState(createInitialState(), stepStart('s', 0, 5000, 1, 1), '2026-01-01')
+    state = reduceState(state, assistantMessage('s', 1, 3000, 1, 1), '2026-01-01')
+    expect(state.sessions.s?.lastRequestDurationMs).toBe(0)
+    expect(state.sessions.s?.maxRequestDurationMs).toBe(0)
+  })
+
+  it('step/end never fabricates a request duration', () => {
+    let state = reduceState(createInitialState(), stepStart('s', 0, 1000, 1, 1), '2026-01-01')
+    state = reduceState(state, stepEnd('s', 1, 118000, 1, 1), '2026-01-01')
+    expect(state.sessions.s?.lastRequestDurationMs).toBeNull()
+    expect(state.sessions.s?.maxRequestDurationMs).toBe(0)
+  })
+})
+
+describe('reducer — P7 tool barrage', () => {
+  it('counts 5 settled native calls inside one step toward the burst', () => {
+    let state = reduceState(createInitialState(), stepStart('s', 0, 1000, 1, 1), '2026-01-01')
+    for (let i = 0; i < 5; i += 1) state = reduceState(state, tool('s', i + 1, other()), '2026-01-01')
+    expect(state.sessions.s?.currentStepToolCalls).toBe(5)
+    expect(state.sessions.s?.maxToolCallsInStep).toBe(5)
+  })
+
+  it('resets the burst on a new step while keeping the max', () => {
+    let state = reduceState(createInitialState(), stepStart('s', 0, 1000, 1, 1), '2026-01-01')
+    for (let i = 0; i < 5; i += 1) state = reduceState(state, tool('s', i + 1, other()), '2026-01-01')
+    state = reduceState(state, stepEnd('s', 6, 2000, 1, 1), '2026-01-01')
+    state = reduceState(state, stepStart('s', 7, 3000, 1, 2), '2026-01-01')
+    expect(state.sessions.s?.currentStepToolCalls).toBe(0)
+    expect(state.sessions.s?.maxToolCallsInStep).toBe(5)
+    state = reduceState(state, tool('s', 8, other()), '2026-01-01')
+    expect(state.sessions.s?.currentStepToolCalls).toBe(1)
+  })
+
+  it('a failed settled tool still counts one burst invocation', () => {
+    let state = reduceState(createInitialState(), stepStart('s', 0, 1000, 1, 1), '2026-01-01')
+    state = reduceState(state, tool('s', 1, read('a.txt'), true), '2026-01-01')
+    expect(state.sessions.s?.currentStepToolCalls).toBe(1)
+    expect(state.sessions.s?.maxToolCallsInStep).toBe(1)
+  })
+
+  it('a tool call without an open step skips the burst but keeps old counters', () => {
+    const state = reduceState(createInitialState(), tool('s', 0, read('a.txt')), '2026-01-01')
+    expect(state.sessions.s?.currentStepToolCalls).toBe(0)
+    expect(state.sessions.s?.maxToolCallsInStep).toBe(0)
+    expect(state.sessions.s?.toolCalls).toBe(1)
+  })
+})
+
+describe('reducer — P7 defensive boundaries', () => {
+  it('overwrites a stale openStep on a new step/start without computing duration', () => {
+    let state = reduceState(createInitialState(), stepStart('s', 0, 1000, 1, 1), '2026-01-01')
+    state = reduceState(state, tool('s', 1, other()), '2026-01-01')
+    state = reduceState(state, stepStart('s', 2, 9000, 1, 2), '2026-01-01')
+    expect(state.sessions.s?.openStep).toEqual({ turn: 1, step: 2, startedAt: 9000 })
+    expect(state.sessions.s?.currentStepToolCalls).toBe(0)
+    expect(state.sessions.s?.maxRequestDurationMs).toBe(0)
+  })
+
+  it('turn/end drops a half-open step without bumping trajectoryTurns', () => {
+    let state = reduceState(createInitialState(), stepStart('s', 0, 1000, 1, 1), '2026-01-01')
+    state = reduceState(state, tool('s', 1, other()), '2026-01-01')
+    state = reduceState(state, turnEnd('s', 2), '2026-01-01')
+    expect(state.sessions.s?.openStep).toBeNull()
+    expect(state.sessions.s?.currentStepToolCalls).toBe(0)
+    expect(state.sessions.s?.trajectoryTurns).toBe(0)
   })
 })

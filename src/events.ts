@@ -28,8 +28,50 @@ export interface ToolSummary {
   command?: string
 }
 
+/**
+ * Harness-agnostic token-usage projection. Kept structurally identical to the
+ * installed `@deepseek-ai/dsh-llm` `TokenUsage`, but as an achievement-owned
+ * type so a `TokenUsage` runtime object never leaks into `AchievementDef` or
+ * the browser API.
+ */
+export interface AchievementTokenUsage {
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens?: number
+  cacheWriteTokens?: number
+  reasoningTokens?: number
+}
+
 export type AchievementEvent =
   | { kind: 'turn-end'; sessionId: string; seq: number }
+  | {
+      kind: 'step-start'
+      sessionId: string
+      seq: number
+      /** Unix epoch milliseconds (the durable boundary's `event.time`). */
+      time: number
+      turn: number
+      step: number
+    }
+  | {
+      kind: 'assistant-message'
+      sessionId: string
+      seq: number
+      /** Unix epoch milliseconds of the assembled assistant message. */
+      time: number
+      turn: number
+      step: number
+      usage?: AchievementTokenUsage
+    }
+  | {
+      kind: 'step-end'
+      sessionId: string
+      seq: number
+      /** Unix epoch milliseconds (unused by P7 duration, kept for parity). */
+      time: number
+      turn: number
+      step: number
+    }
   | { kind: 'tool-call'; sessionId: string; seq: number; callId: string | null; tool: ToolSummary; isError: boolean }
 
 /** Tool names mapped to a file read. */
@@ -111,6 +153,37 @@ export function classifyCodeDispatch(name: string, args: unknown): ToolSummary {
 
 export function buildTurnEndEvent(sessionId: string, seq: number): AchievementEvent {
   return { kind: 'turn-end', sessionId, seq }
+}
+
+export function buildStepStartEvent(
+  sessionId: string,
+  seq: number,
+  time: number,
+  turn: number,
+  step: number,
+): AchievementEvent {
+  return { kind: 'step-start', sessionId, seq, time, turn, step }
+}
+
+export function buildAssistantMessageEvent(
+  sessionId: string,
+  seq: number,
+  time: number,
+  turn: number,
+  step: number,
+  usage?: AchievementTokenUsage,
+): AchievementEvent {
+  return { kind: 'assistant-message', sessionId, seq, time, turn, step, usage }
+}
+
+export function buildStepEndEvent(
+  sessionId: string,
+  seq: number,
+  time: number,
+  turn: number,
+  step: number,
+): AchievementEvent {
+  return { kind: 'step-end', sessionId, seq, time, turn, step }
 }
 
 export function buildToolCallEvent(

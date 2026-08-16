@@ -56,7 +56,13 @@ export declare function chainProgressOf(chain: AchievementChain, unlocked: Recor
  * these chains rather than hardcoding them.
  */
 export declare const MILESTONE_CHAINS: readonly AchievementChain[];
-/** Non-progression special chains: streaks + session behavior. */
+/**
+ * P7 trajectory chains: four five-tier session chains. The Badge Wall derives
+ * its special-behavior grouping from these ids (never hardcoded in JSX), and
+ * each chain also renders as a `/5` progress row.
+ */
+export declare const TRAJECTORY_CHAINS: readonly AchievementChain[];
+/** Non-progression special chains: streaks + session behavior + P7 trajectory. */
 export declare const SPECIAL_CHAINS: readonly AchievementChain[];
 /** Every built-in chain: seven milestone lines first, then special chains. */
 export declare const BUILTIN_CHAINS: readonly AchievementChain[];

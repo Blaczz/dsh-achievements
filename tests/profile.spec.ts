@@ -49,11 +49,11 @@ describe('personaOf', () => {
 describe('raritySummaryOf', () => {
   it('counts totals and unlocked per rarity across the builtins', () => {
     const summary = raritySummaryOf(VIEWS, {})
-    expect(summary.common.total).toBe(8)
-    expect(summary.uncommon.total).toBe(11)
-    expect(summary.rare.total).toBe(9)
-    expect(summary.epic.total).toBe(11)
-    expect(summary.legendary.total).toBe(9)
+    expect(summary.common.total).toBe(12)
+    expect(summary.uncommon.total).toBe(15)
+    expect(summary.rare.total).toBe(13)
+    expect(summary.epic.total).toBe(15)
+    expect(summary.legendary.total).toBe(13)
     for (const count of Object.values(summary)) expect(count.unlocked).toBe(0)
   })
 
@@ -110,6 +110,15 @@ describe('buildSessionSummary', () => {
     state.sessions.s1 = session({ xpGained: 50, toolCalls: 1 })
     expect(buildSessionSummary(state, 's1')!.levelUp).toBeNull()
   })
+
+  it('surfaces the three P7 trajectory summary facts', () => {
+    const state = createInitialState()
+    state.sessions.s1 = session({ trajectoryTurns: 7, steps: 26, maxStepsInTurn: 12 })
+    const summary = buildSessionSummary(state, 's1')!
+    expect(summary.turns).toBe(7)
+    expect(summary.steps).toBe(26)
+    expect(summary.maxStepsInTurn).toBe(12)
+  })
 })
 
 describe('buildProfileView', () => {
@@ -122,7 +131,7 @@ describe('buildProfileView', () => {
     const view = buildProfileView(state, VIEWS)
     expect(view.level.level).toBe(2)
     expect(view.unlockedCount).toBe(1)
-    expect(view.totalCount).toBe(48)
+    expect(view.totalCount).toBe(68)
     expect(view.favoriteTool).toBe('read')
     expect(view.persona.id).toBe('detective')
     expect(view.rarity.common.unlocked).toBe(1)

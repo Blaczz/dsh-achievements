@@ -32,7 +32,80 @@ export function buildContext(state: AchievementState, sessionId: string): Achiev
 }
 
 export function reduceState(state: AchievementState, event: AchievementEvent, today: string): AchievementState {
-  return event.kind === 'turn-end' ? reduceTurnEnd(state, event, today) : reduceToolCall(state, event)
+  switch (event.kind) {
+    case 'turn-end': return reduceTurnEnd(state, event, today)
+    case 'step-start': return reduceStepStart(state, event)
+    case 'assistant-message': return reduceAssistantMessage(state, event)
+    case 'step-end': return reduceStepEnd(state, event)
+    case 'tool-call': return reduceToolCall(state, event)
+  }
+}
+
+function reduceStepStart(
+  state: AchievementState,
+  event: Extract<AchievementEvent, { kind: 'step-start' }>,
+): AchievementState {
+  const prev = state.sessions[event.sessionId] ?? createInitialSessionState()
+  // A stale openStep (no matching step/end arrived, e.g. a crash or reorder) is
+  // simply overwritten: P7 never fabricates a duration from `Date.now()`, and a
+  // defensive overwrite must not throw or leak the old request into the new one.
+  const next: SessionAchievementState = {
+    ...prev,
+    openStep: { turn: event.turn, step: event.step, startedAt: event.time },
+    currentStepToolCalls: 0,
+  }
+  return { ...state, sessions: touchSession(state.sessions, event.sessionId, next) }
+}
+
+function reduceStepEnd(
+  state: AchievementState,
+  event: Extract<AchievementEvent, { kind: 'step-end' }>,
+): AchievementState {
+  const prev = state.sessions[event.sessionId] ?? createInitialSessionState()
+  const next: SessionAchievementState = { ...prev, steps: prev.steps + 1 }
+
+  // Distinct closed-step turns: turn numbers advance monotonically per session,
+  // so `lastCountedTrajectoryTurn !== turn` is a distinct-turn test (a turn
+  // number jump counts +1, never interpolating the skipped numbers).
+  if (prev.lastCountedTrajectoryTurn !== event.turn) {
+    next.trajectoryTurns = prev.trajectoryTurns + 1
+    next.lastCountedTrajectoryTurn = event.turn
+  }
+
+  // Per-turn depth: closed steps only (`step/end`), never the `step` number.
+  if (prev.currentTurnNumber === event.turn) {
+    next.currentTurnSteps = prev.currentTurnSteps + 1
+  } else {
+    next.currentTurnNumber = event.turn
+    next.currentTurnSteps = 1
+  }
+  next.maxStepsInTurn = Math.max(prev.maxStepsInTurn, next.currentTurnSteps)
+
+  // Close the step regardless of identity match: a boundary mismatch still
+  // counts the durable step/end itself and clears any stale open state.
+  next.openStep = null
+  next.currentStepToolCalls = 0
+
+  return { ...state, sessions: touchSession(state.sessions, event.sessionId, next) }
+}
+
+function reduceAssistantMessage(
+  state: AchievementState,
+  event: Extract<AchievementEvent, { kind: 'assistant-message' }>,
+): AchievementState {
+  const prev = state.sessions[event.sessionId]
+  if (prev === undefined) return state
+  const open = prev.openStep
+  // Request duration = assembled message time − matching step/start time. A
+  // missing or mismatched open step is ignored (conservative: no guessing).
+  if (open === null || open.turn !== event.turn || open.step !== event.step) return state
+  const duration = Math.max(0, event.time - open.startedAt)
+  const next: SessionAchievementState = {
+    ...prev,
+    lastRequestDurationMs: duration,
+    maxRequestDurationMs: Math.max(prev.maxRequestDurationMs, duration),
+  }
+  return { ...state, sessions: touchSession(state.sessions, event.sessionId, next) }
 }
 
 function reduceTurnEnd(
@@ -62,11 +135,17 @@ function reduceTurnEnd(
   profile.lastActiveDay = today
   profile.longestStreak = Math.max(profile.longestStreak, profile.currentStreak)
 
-  // A turn boundary interrupts a run of consecutive reads.
+  // A turn boundary interrupts a run of consecutive reads, and (P7 defensive
+  // cleanup) drops any half-open step: an aborted turn that never emitted its
+  // step/end must not leak its openStep / burst into the next turn. It must NOT
+  // bump trajectoryTurns here — empty turns stay invisible to trajectory stats.
   let sessions = state.sessions
   const session = sessions[event.sessionId]
   if (session !== undefined) {
-    sessions = { ...sessions, [event.sessionId]: { ...session, consecutiveReads: 0 } }
+    sessions = {
+      ...sessions,
+      [event.sessionId]: { ...session, consecutiveReads: 0, openStep: null, currentStepToolCalls: 0 },
+    }
   }
 
   return { ...state, profile, sessions }
@@ -82,6 +161,14 @@ function reduceToolCall(
     ...prev,
     toolCalls: prev.toolCalls + 1,
     toolsByName: increment(prev.toolsByName, tool.name),
+  }
+
+  // P7 tool barrage: a settled invocation inside the currently open step counts
+  // toward that step's burst (failed invocations included). Without an openStep
+  // the burst is not guessed — existing tool/file/test facts still accumulate.
+  if (prev.openStep !== null) {
+    next.currentStepToolCalls = prev.currentStepToolCalls + 1
+    next.maxToolCallsInStep = Math.max(prev.maxToolCallsInStep, next.currentStepToolCalls)
   }
 
   // Lifetime counters are built once and incremented per kind below, so the

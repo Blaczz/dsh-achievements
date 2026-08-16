@@ -25,10 +25,48 @@ export interface ToolSummary {
     /** Shell command text for shell-command / test-run. */
     command?: string;
 }
+/**
+ * Harness-agnostic token-usage projection. Kept structurally identical to the
+ * installed `@deepseek-ai/dsh-llm` `TokenUsage`, but as an achievement-owned
+ * type so a `TokenUsage` runtime object never leaks into `AchievementDef` or
+ * the browser API.
+ */
+export interface AchievementTokenUsage {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+    reasoningTokens?: number;
+}
 export type AchievementEvent = {
     kind: 'turn-end';
     sessionId: string;
     seq: number;
+} | {
+    kind: 'step-start';
+    sessionId: string;
+    seq: number;
+    /** Unix epoch milliseconds (the durable boundary's `event.time`). */
+    time: number;
+    turn: number;
+    step: number;
+} | {
+    kind: 'assistant-message';
+    sessionId: string;
+    seq: number;
+    /** Unix epoch milliseconds of the assembled assistant message. */
+    time: number;
+    turn: number;
+    step: number;
+    usage?: AchievementTokenUsage;
+} | {
+    kind: 'step-end';
+    sessionId: string;
+    seq: number;
+    /** Unix epoch milliseconds (unused by P7 duration, kept for parity). */
+    time: number;
+    turn: number;
+    step: number;
 } | {
     kind: 'tool-call';
     sessionId: string;
@@ -67,4 +105,7 @@ export declare function parseToolArguments(raw: string): unknown;
  */
 export declare function classifyCodeDispatch(name: string, args: unknown): ToolSummary;
 export declare function buildTurnEndEvent(sessionId: string, seq: number): AchievementEvent;
+export declare function buildStepStartEvent(sessionId: string, seq: number, time: number, turn: number, step: number): AchievementEvent;
+export declare function buildAssistantMessageEvent(sessionId: string, seq: number, time: number, turn: number, step: number, usage?: AchievementTokenUsage): AchievementEvent;
+export declare function buildStepEndEvent(sessionId: string, seq: number, time: number, turn: number, step: number): AchievementEvent;
 export declare function buildToolCallEvent(sessionId: string, seq: number, callId: string | null, tool: ToolSummary, isError: boolean): AchievementEvent;

@@ -12,7 +12,7 @@
  *   }
  */
 import { describe, expect, it } from 'vitest'
-import { buildToolCallEvent, classifyCodeDispatch } from '../src/events.ts'
+import { buildStepStartEvent, buildToolCallEvent, classifyCodeDispatch } from '../src/events.ts'
 import { reduceState } from '../src/reducer.ts'
 import { createInitialState } from '../src/state.ts'
 
@@ -74,5 +74,19 @@ describe('Code Mode sub-dispatch → reducer equivalence', () => {
     const state = reduceState(createInitialState(), codeDispatch('s', 0, 'read', undefined), '2026-01-01')
     expect(state.profile.toolCalls).toBe(1)
     expect(state.sessions.s?.filesRead['']).toBe(1)
+  })
+})
+
+describe('Code Mode tool barrage (P7)', () => {
+  it('counts one settled sub-dispatch per burst invocation, never the start event', () => {
+    let state = reduceState(createInitialState(), buildStepStartEvent('s', 0, 1000, 1, 1), '2026-01-01')
+    // Five settled dispatches inside the open step → burst = 5. The sibling
+    // `tool/code-dispatch-start` event is log-only and has no AchievementEvent
+    // kind, so it structurally cannot contribute a 6th burst invocation.
+    for (let i = 0; i < 5; i += 1) {
+      state = reduceState(state, codeDispatch('s', i + 1, 'read', { file_path: `f${i}` }), '2026-01-01')
+    }
+    expect(state.sessions.s?.currentStepToolCalls).toBe(5)
+    expect(state.sessions.s?.maxToolCallsInStep).toBe(5)
   })
 })

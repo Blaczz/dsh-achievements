@@ -107,6 +107,12 @@ export function buildProfileView(state: AchievementState, views: readonly Achiev
 
 export interface SessionSummary {
   sessionId: string
+  /** Distinct closed-step turns in this session (P7 trajectory). */
+  turns: number
+  /** Total closed steps in this session (P7 trajectory). */
+  steps: number
+  /** Deepest single-turn step depth observed in this session (P7 trajectory). */
+  maxStepsInTurn: number
   toolCalls: number
   filesRead: number
   filesEdited: number
@@ -128,6 +134,9 @@ export function buildSessionSummary(state: AchievementState, sessionId: string):
   const after = levelOf(state.profile.xp).level
   return {
     sessionId,
+    turns: session.trajectoryTurns,
+    steps: session.steps,
+    maxStepsInTurn: session.maxStepsInTurn,
     toolCalls: session.toolCalls,
     filesRead: distinctCount(session.filesRead),
     filesEdited: distinctCount(session.filesEdited),

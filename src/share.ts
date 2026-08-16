@@ -147,10 +147,39 @@ export const MILESTONE_CHAINS: readonly AchievementChain[] = [
   { id: 'tests', title: { zh: '测试之路', en: 'Test Runs' }, achievementIds: ['tests-1', 'tests-10', 'tests-50', 'tests-250', 'tests-1000'] },
 ]
 
-/** Non-progression special chains: streaks + session behavior. */
+/**
+ * P7 trajectory chains: four five-tier session chains. The Badge Wall derives
+ * its special-behavior grouping from these ids (never hardcoded in JSX), and
+ * each chain also renders as a `/5` progress row.
+ */
+export const TRAJECTORY_CHAINS: readonly AchievementChain[] = [
+  {
+    id: 'session-marathon',
+    title: { zh: '会话马拉松', en: 'Session Marathon' },
+    achievementIds: ['session-turns-5', 'session-turns-20', 'session-turns-50', 'session-turns-100', 'session-turns-200'],
+  },
+  {
+    id: 'turn-depth',
+    title: { zh: '单轮深潜', en: 'Turn Depth' },
+    achievementIds: ['turn-steps-5', 'turn-steps-20', 'turn-steps-50', 'turn-steps-100', 'turn-steps-500'],
+  },
+  {
+    id: 'tool-barrage',
+    title: { zh: '工具齐射', en: 'Tool Barrage' },
+    achievementIds: ['step-tools-5', 'step-tools-10', 'step-tools-25', 'step-tools-50', 'step-tools-100'],
+  },
+  {
+    id: 'time-anomaly',
+    title: { zh: '时间异象', en: 'Time Anomaly' },
+    achievementIds: ['request-duration-30s', 'request-duration-100s', 'request-duration-300s', 'request-duration-500s', 'request-duration-1000s'],
+  },
+]
+
+/** Non-progression special chains: streaks + session behavior + P7 trajectory. */
 export const SPECIAL_CHAINS: readonly AchievementChain[] = [
   { id: 'streaks', title: { zh: '连续作战', en: 'Streak' }, achievementIds: ['streak-3', 'streak-7'] },
   { id: 'behavior', title: { zh: '行为狂人', en: 'Behavior Maniac' }, achievementIds: ['deja-vu', 'rabbit-hole', 'yolo', 'it-works-eventually'] },
+  ...TRAJECTORY_CHAINS,
 ]
 
 /** Every built-in chain: seven milestone lines first, then special chains. */
