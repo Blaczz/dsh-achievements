@@ -1,6 +1,6 @@
 /** Event classifier fixtures: raw tool name + args → standardized behavior projection. */
 import { describe, expect, it } from 'vitest'
-import { classifyTool, isTestCommand, parseToolArguments } from '../src/events.ts'
+import { classifyTool, isDependencyPath, isTestCommand, parseToolArguments } from '../src/events.ts'
 
 describe('classifyTool', () => {
   it('classifies read → file-read with path', () => {
@@ -48,6 +48,28 @@ describe('isTestCommand', () => {
   it('rejects ordinary shell commands (including a bare "test" word)', () => {
     const commands = ['ls -la', 'git status', 'echo "test"', 'npm install', 'cat file.txt', 'bash script.sh']
     for (const command of commands) expect(isTestCommand(command), command).toBe(false)
+  })
+})
+
+describe('isDependencyPath', () => {
+  it('matches files under node_modules, site-packages and vendor', () => {
+    const paths = [
+      'node_modules/react/index.js',
+      'src/node_modules/dep/a.ts',
+      './vendor/autoload.php',
+      'site-packages/django/apps.py',
+    ]
+    for (const path of paths) expect(isDependencyPath(path), path).toBe(true)
+  })
+
+  it('normalizes Windows backslashes', () => {
+    expect(isDependencyPath('C:\\proj\\node_modules\\a.js')).toBe(true)
+    expect(isDependencyPath('C:\\proj\\src\\a.js')).toBe(false)
+  })
+
+  it('rejects ordinary source paths and lookalike names', () => {
+    const paths = ['src/index.ts', 'vendor-scripts/build.sh', '', 'node_modulesx/a.ts']
+    for (const path of paths) expect(isDependencyPath(path), path).toBe(false)
   })
 })
 

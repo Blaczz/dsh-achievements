@@ -35,10 +35,16 @@ export interface SessionAchievementState {
     filesEdited: Record<string, number>;
     commands: Record<string, number>;
     tests: TestCounters;
+    /** Seq of the first successful file read in this session, or null. */
+    firstReadSeq: number | null;
     /** Seq of the first successful file edit in this session, or null. */
     firstEditSeq: number | null;
     /** Seq of the first test run in this session, or null. */
     firstTestSeq: number | null;
+    /** Outcome of the first test run in this session ('pass' | 'fail' | null). */
+    firstTestOutcome: 'pass' | 'fail' | null;
+    /** Total successful file-edit invocations in this session (One Shot). */
+    edits: number;
     /** Current run of consecutive successful file reads (reset by any other event). */
     consecutiveReads: number;
     /** Distinct files read before the first edit (frozen at the first edit). */

@@ -37,7 +37,7 @@ export {
 } from './state.ts'
 export type { AchievementState, ProfileState, SessionAchievementState, TestCounters } from './state.ts'
 export {
-  buildToolCallEvent, buildTurnEndEvent, classifyTool, isTestCommand, parseToolArguments,
+  buildToolCallEvent, buildTurnEndEvent, classifyTool, isDependencyPath, isTestCommand, parseToolArguments,
 } from './events.ts'
 export type { AchievementEvent, ToolKind, ToolSummary } from './events.ts'
 export { buildContext, reduceState, yesterdayOf } from './reducer.ts'

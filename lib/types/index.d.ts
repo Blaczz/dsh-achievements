@@ -9,7 +9,7 @@ export { applyEvent, BEHAVIOR_ACHIEVEMENTS, BUILTIN_ACHIEVEMENTS, COUNTER_ACHIEV
 export type { AchievementCounters, AchievementDef, AchievementEvaluation, AchievementProgress, AchievementProgressView, AchievementRarity, AchievementScope, AchievementView, AchievementsSettings, LocalizedText, } from './achievements.ts';
 export { createInitialProfile, createInitialSessionState, createInitialState, migrateState, MAX_SESSIONS, STATE_VERSION, touchSession, } from './state.ts';
 export type { AchievementState, ProfileState, SessionAchievementState, TestCounters } from './state.ts';
-export { buildToolCallEvent, buildTurnEndEvent, classifyTool, isTestCommand, parseToolArguments, } from './events.ts';
+export { buildToolCallEvent, buildTurnEndEvent, classifyTool, isDependencyPath, isTestCommand, parseToolArguments, } from './events.ts';
 export type { AchievementEvent, ToolKind, ToolSummary } from './events.ts';
 export { buildContext, reduceState, yesterdayOf } from './reducer.ts';
 export type { AchievementContext } from './reducer.ts';

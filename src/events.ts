@@ -52,6 +52,20 @@ export function isTestCommand(command: string): boolean {
   return TEST_COMMAND_RE.test(command)
 }
 
+/** Directory names treated as third-party dependency roots. */
+const DEPENDENCY_DIRS: readonly string[] = ['node_modules', 'site-packages', 'vendor']
+
+/**
+ * Path classifier for the Dependency Archaeologist rule: whether a file path
+ * lives under a dependency directory (`node_modules` / `site-packages` /
+ * `vendor`). Matches the directory as a whole path segment (backslashes are
+ * normalized) so a project file merely named `vendor-scripts` does not match.
+ */
+export function isDependencyPath(path: string): boolean {
+  const segments = path.replace(/\\/g, '/').split('/')
+  return segments.some(segment => DEPENDENCY_DIRS.includes(segment))
+}
+
 /** Classify a settled tool invocation into a behavior projection. */
 export function classifyTool(name: string, args: unknown): ToolSummary {
   const record = isRecord(args) ? args : {}

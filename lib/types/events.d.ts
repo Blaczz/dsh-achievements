@@ -45,6 +45,13 @@ export declare const FILE_EDIT_TOOLS: readonly string[];
 export declare const SHELL_TOOLS: readonly string[];
 /** Whether a shell command string runs a known test runner. */
 export declare function isTestCommand(command: string): boolean;
+/**
+ * Path classifier for the Dependency Archaeologist rule: whether a file path
+ * lives under a dependency directory (`node_modules` / `site-packages` /
+ * `vendor`). Matches the directory as a whole path segment (backslashes are
+ * normalized) so a project file merely named `vendor-scripts` does not match.
+ */
+export declare function isDependencyPath(path: string): boolean;
 /** Classify a settled tool invocation into a behavior projection. */
 export declare function classifyTool(name: string, args: unknown): ToolSummary;
 /** Parse the raw JSON arguments string from a session `tool/call` event; never throws. */

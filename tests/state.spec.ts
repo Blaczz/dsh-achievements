@@ -66,6 +66,24 @@ describe('state migration', () => {
     expect(state.sessions.s2?.failingCommand).toBeNull()
   })
 
+  it('normalizes the v0.2 fields (firstReadSeq, firstTestOutcome, edits) and rejects invalid values', () => {
+    const partial = {
+      version: 2,
+      profile: {},
+      sessions: {
+        s1: { firstReadSeq: 3, firstTestOutcome: 'pass', edits: 4 },
+        s2: { firstTestOutcome: 'bogus', edits: 'nope' },
+      },
+    }
+    const state = migrateState(partial)
+    expect(state.sessions.s1?.firstReadSeq).toBe(3)
+    expect(state.sessions.s1?.firstTestOutcome).toBe('pass')
+    expect(state.sessions.s1?.edits).toBe(4)
+    expect(state.sessions.s2?.firstReadSeq).toBeNull()
+    expect(state.sessions.s2?.firstTestOutcome).toBeNull()
+    expect(state.sessions.s2?.edits).toBe(0)
+  })
+
   it('round-trips profile/unlocks/sessions through JSON', () => {
     const state = createInitialState()
     state.profile.turns = 5

@@ -53,10 +53,16 @@ export interface SessionAchievementState {
   filesEdited: Record<string, number>
   commands: Record<string, number>
   tests: TestCounters
+  /** Seq of the first successful file read in this session, or null. */
+  firstReadSeq: number | null
   /** Seq of the first successful file edit in this session, or null. */
   firstEditSeq: number | null
   /** Seq of the first test run in this session, or null. */
   firstTestSeq: number | null
+  /** Outcome of the first test run in this session ('pass' | 'fail' | null). */
+  firstTestOutcome: 'pass' | 'fail' | null
+  /** Total successful file-edit invocations in this session (One Shot). */
+  edits: number
   /** Current run of consecutive successful file reads (reset by any other event). */
   consecutiveReads: number
   /** Distinct files read before the first edit (frozen at the first edit). */
@@ -87,8 +93,11 @@ export function createInitialSessionState(): SessionAchievementState {
     filesEdited: {},
     commands: {},
     tests: { runs: 0, passed: 0, failed: 0, lastOutcome: null },
+    firstReadSeq: null,
     firstEditSeq: null,
     firstTestSeq: null,
+    firstTestOutcome: null,
+    edits: 0,
     consecutiveReads: 0,
     readsBeforeFirstEdit: 0,
     editsBeforeFirstTest: 0,
@@ -242,8 +251,11 @@ function normalizeSession(raw: Record<string, unknown>): SessionAchievementState
     failed: toNumber(tests.failed),
     lastOutcome: tests.lastOutcome === 'pass' || tests.lastOutcome === 'fail' ? tests.lastOutcome : null,
   }
+  session.firstReadSeq = toNullableNumber(raw.firstReadSeq)
   session.firstEditSeq = toNullableNumber(raw.firstEditSeq)
   session.firstTestSeq = toNullableNumber(raw.firstTestSeq)
+  session.firstTestOutcome = raw.firstTestOutcome === 'pass' || raw.firstTestOutcome === 'fail' ? raw.firstTestOutcome : null
+  session.edits = toNumber(raw.edits)
   session.consecutiveReads = toNumber(raw.consecutiveReads)
   session.readsBeforeFirstEdit = toNumber(raw.readsBeforeFirstEdit)
   session.editsBeforeFirstTest = toNumber(raw.editsBeforeFirstTest)

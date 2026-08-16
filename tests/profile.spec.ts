@@ -50,10 +50,10 @@ describe('raritySummaryOf', () => {
   it('counts totals and unlocked per rarity across the builtins', () => {
     const summary = raritySummaryOf(VIEWS, {})
     expect(summary.common.total).toBe(3)
-    expect(summary.uncommon.total).toBe(4)
+    expect(summary.uncommon.total).toBe(5)
     expect(summary.rare.total).toBe(3)
-    expect(summary.epic.total).toBe(3)
-    expect(summary.legendary.total).toBe(1)
+    expect(summary.epic.total).toBe(5)
+    expect(summary.legendary.total).toBe(2)
     for (const count of Object.values(summary)) expect(count.unlocked).toBe(0)
   })
 
@@ -122,7 +122,7 @@ describe('buildProfileView', () => {
     const view = buildProfileView(state, VIEWS)
     expect(view.level.level).toBe(2)
     expect(view.unlockedCount).toBe(1)
-    expect(view.totalCount).toBe(14)
+    expect(view.totalCount).toBe(18)
     expect(view.favoriteTool).toBe('read')
     expect(view.persona.id).toBe('detective')
     expect(view.rarity.common.unlocked).toBe(1)

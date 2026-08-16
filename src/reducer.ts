@@ -84,6 +84,7 @@ function reduceToolCall(
         const path = tool.path ?? ''
         const isNewFile = prev.filesRead[path] === undefined
         next.filesRead = increment(prev.filesRead, path)
+        if (prev.firstReadSeq === null) next.firstReadSeq = seq
         // Distinct files read before the first edit drive Rabbit Hole.
         if (prev.firstEditSeq === null && isNewFile) {
           next.readsBeforeFirstEdit = prev.readsBeforeFirstEdit + 1
@@ -99,6 +100,7 @@ function reduceToolCall(
         const path = tool.path ?? ''
         const isNewFile = prev.filesEdited[path] === undefined
         next.filesEdited = increment(prev.filesEdited, path)
+        next.edits = prev.edits + 1
         if (prev.firstEditSeq === null) next.firstEditSeq = seq
         // Distinct files edited before the first test drive YOLO.
         if (prev.firstTestSeq === null && isNewFile) {
@@ -133,7 +135,10 @@ function reduceToolCall(
         next.failingCommand = command
         next.failingStreak = 1
       }
-      if (prev.firstTestSeq === null) next.firstTestSeq = seq
+      if (prev.firstTestSeq === null) {
+        next.firstTestSeq = seq
+        next.firstTestOutcome = passed ? 'pass' : 'fail'
+      }
       next.consecutiveReads = 0
       break
     }

@@ -24,7 +24,7 @@ describe('buildShareText', () => {
     state.profile.unlocked = { 'first-turn': 1, 'streak-7': 2 }
     const text = buildShareText(state, VIEWS)
     expect(text).toContain('Lv.2')
-    expect(text).toContain('2/14')
+    expect(text).toContain('2/18')
     const legendary = text.indexOf('七日火山')
     const common = text.indexOf('初次登场')
     expect(legendary).toBeGreaterThan(-1)

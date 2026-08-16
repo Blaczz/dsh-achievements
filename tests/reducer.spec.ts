@@ -46,6 +46,27 @@ describe('reducer — tool activity', () => {
     expect(state.sessions.s?.editsBeforeFirstTest).toBe(2)
   })
 
+  it('tracks firstReadSeq, total edits, and firstTestOutcome', () => {
+    let state = reduceState(createInitialState(), tool('s', 1, read('a.txt')), '2026-01-01')
+    expect(state.sessions.s?.firstReadSeq).toBe(1)
+    state = reduceState(state, tool('s', 2, edit('a.ts')), '2026-01-01')
+    expect(state.sessions.s?.edits).toBe(1)
+    state = reduceState(state, tool('s', 3, edit('a.ts')), '2026-01-01')
+    expect(state.sessions.s?.edits).toBe(2)
+    state = reduceState(state, tool('s', 4, test('npm test'), true), '2026-01-01')
+    expect(state.sessions.s?.firstTestOutcome).toBe('fail')
+    // A later passing test does not rewrite the first test's outcome.
+    state = reduceState(state, tool('s', 5, test('npm test'), false), '2026-01-01')
+    expect(state.sessions.s?.firstTestOutcome).toBe('fail')
+  })
+
+  it('does not set firstReadSeq or edits for errored invocations', () => {
+    let state = reduceState(createInitialState(), tool('s', 0, read('a.txt'), true), '2026-01-01')
+    state = reduceState(state, tool('s', 1, edit('a.ts'), true), '2026-01-01')
+    expect(state.sessions.s?.firstReadSeq).toBeNull()
+    expect(state.sessions.s?.edits).toBe(0)
+  })
+
   it('freezes editsBeforeFirstTest once the first test runs', () => {
     let state = reduceState(createInitialState(), tool('s', 1, edit('a.ts')), '2026-01-01')
     state = reduceState(state, tool('s', 2, test('npm test'), false), '2026-01-01')

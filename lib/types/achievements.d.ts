@@ -4,7 +4,7 @@
  * lifetime/profile and session behavior. The Host feeds standardized events in;
  * this module reduces them and evaluates every still-locked achievement.
  */
-import type { AchievementEvent } from './events.ts';
+import { type AchievementEvent } from './events.ts';
 import { type AchievementContext } from './reducer.ts';
 import { type AchievementState, type ProfileState } from './state.ts';
 import type { AchievementPack } from './sdk.ts';
