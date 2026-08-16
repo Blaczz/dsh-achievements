@@ -1,66 +1,171 @@
 /**
- * The achievement engine, extracted as pure functions so the unlock rules are
- * unit-testable without a running harness. The Host half feeds real session /
- * tool events in; this module only maps counters → achievements.
- *
- * State shape:
- * - `counters` — lifetime totals (turns, tool calls, sessions, streak days)
- * - `unlocked` — achievement id → unlock epoch-ms
- * - `lastActiveDay` — 'YYYY-MM-DD' of the most recent turn, drives the streak
- * - `seenSessions` — distinct session ids that completed a turn
+ * Achievement domain model v2 + the pure evaluation engine. Unlock rules moved
+ * from `condition(counters)` to `evaluate(ctx)`, so a definition can read both
+ * lifetime/profile and session behavior. The Host feeds standardized events in;
+ * this module reduces them and evaluates every still-locked achievement.
  */
+import { type AchievementEvent } from './events.ts';
+import { type AchievementContext } from './reducer.ts';
+import { type AchievementState, type ProfileState, type SessionAchievementState } from './state.ts';
+import type { AchievementPack } from './sdk.ts';
+export interface LocalizedText {
+    zh: string;
+    en: string;
+}
+export type AchievementRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
+export type AchievementScope = 'lifetime' | 'session';
+export interface AchievementEvaluation {
+    unlocked: boolean;
+    /** Optional progress toward the target (rendered by Steamification, P2). */
+    progress?: number;
+    /** Optional target the progress is measured against. */
+    target?: number;
+}
+export type { AchievementContext } from './reducer.ts';
+export interface AchievementDef {
+    id: string;
+    icon: string;
+    title: LocalizedText;
+    description: LocalizedText;
+    flavorText?: LocalizedText;
+    rarity: AchievementRarity;
+    xp: number;
+    scope: AchievementScope;
+    hidden?: boolean;
+    evaluate(ctx: AchievementContext): AchievementEvaluation;
+}
+export interface AchievementProgress {
+    state: AchievementState;
+    newlyUnlocked: AchievementDef[];
+}
+/**
+ * Advance the engine by one standardized event: reduce it into v2 state, build
+ * the evaluation context, then unlock every still-locked achievement whose
+ * `evaluate` now holds.
+ */
+export declare function applyEvent(state: AchievementState, event: AchievementEvent, defs: readonly AchievementDef[], today: string, now?: number): AchievementProgress;
+/** Serialized progress view of one achievement (progress / target only). */
+export interface AchievementProgressView {
+    progress?: number;
+    target?: number;
+}
+/** Evaluate every definition and keep only the ones reporting progress/target. */
+export declare function computeProgress(defs: readonly AchievementDef[], ctx: AchievementContext): Record<string, AchievementProgressView>;
+/** Result of one silent reconciliation pass. */
+export interface LifetimeReconciliation {
+    state: AchievementState;
+    newlyUnlocked: AchievementDef[];
+    xpGained: number;
+}
+/**
+ * Silently unlock every still-locked `scope === 'lifetime'` definition whose
+ * `evaluate` already holds against the current profile, awarding its XP once.
+ *
+ * Deliberately NOT `applyEvent`: it runs no reducer, writes no session
+ * attribution, and the caller must not broadcast the resulting unlocks. The
+ * unlock timestamp is the reconciliation moment (the "system confirmed" time),
+ * not a fabricated historical completion date. Idempotent via the same
+ * `id in unlocked` guard as the live engine.
+ */
+export declare function reconcileLifetimeAchievements(state: AchievementState, defs: readonly AchievementDef[], now?: number): LifetimeReconciliation;
+/** The v1 counter view, kept so existing counter rules need no rewrite. */
 export interface AchievementCounters {
     turns: number;
     toolCalls: number;
     sessions: number;
     streakDays: number;
 }
-export interface LocalizedText {
-    zh: string;
-    en: string;
-}
-export interface AchievementDef {
+export declare function countersOf(profile: ProfileState): AchievementCounters;
+/** Wrap a v1 `condition(counters)` into a v2 `evaluate(ctx)` definition. */
+export declare function fromCounterCondition(base: {
     id: string;
     icon: string;
     title: LocalizedText;
     description: LocalizedText;
-    /** Unlocked when this predicate holds for the current counters. */
-    condition: (counters: AchievementCounters) => boolean;
+}, condition: (counters: AchievementCounters) => boolean, overrides?: Partial<Pick<AchievementDef, 'rarity' | 'xp' | 'scope' | 'hidden' | 'flavorText'>>): AchievementDef;
+/** Internal spec for one Lifetime threshold milestone (not public SDK surface). */
+interface LifetimeMilestoneSpec {
+    id: string;
+    icon: string;
+    title: LocalizedText;
+    description: LocalizedText;
+    flavorText?: LocalizedText;
+    rarity: AchievementRarity;
+    xp: number;
+    target: number;
+    /** Reads the lifetime metric this milestone measures from the profile. */
+    value(profile: ProfileState): number;
 }
-export interface AchievementState {
-    counters: AchievementCounters;
-    unlocked: Record<string, number>;
-    lastActiveDay: string | null;
-    seenSessions: string[];
+/**
+ * Build one Lifetime threshold achievement with a standard
+ * `{ unlocked, progress, target }` evaluation. `progress` is the raw metric,
+ * not clamped to `target`, so downstream view models keep the true value and
+ * the UI caps the bar width itself. Kept internal: third parties may still
+ * write their own `evaluate`; this is not added to the public SDK surface.
+ */
+export declare function createLifetimeMilestone(spec: LifetimeMilestoneSpec): AchievementDef;
+/** Internal spec for one Session threshold milestone (not public SDK surface). */
+interface SessionMilestoneSpec {
+    id: string;
+    icon: string;
+    title: LocalizedText;
+    description: LocalizedText;
+    flavorText?: LocalizedText;
+    rarity: AchievementRarity;
+    xp: number;
+    target: number;
+    hidden?: boolean;
+    /** Reads the session metric this milestone measures from one session bucket. */
+    value(session: SessionAchievementState): number;
 }
-/** One lifecycle event the engine understands. */
-export type AchievementEvent = {
-    kind: 'turn-end';
-    sessionId: string;
-} | {
-    kind: 'tool-call';
-};
-export interface AchievementProgress {
-    state: AchievementState;
-    newlyUnlocked: AchievementDef[];
-}
-export declare function createInitialState(): AchievementState;
-/** Advance the engine by one event; returns the next state and new unlocks. */
-export declare function applyEvent(state: AchievementState, event: AchievementEvent, defs: readonly AchievementDef[], today: string, now?: number): AchievementProgress;
-/** 'YYYY-MM-DD' one calendar day before `day` (UTC arithmetic, deterministic). */
-export declare function yesterdayOf(day: string): string;
-/** The built-in achievements (ordered for display). */
+/**
+ * Build one Session threshold achievement with a standard
+ * `{ unlocked, progress, target }` evaluation. `progress` is the raw metric, not
+ * clamped, mirroring `createLifetimeMilestone`. Kept internal: third parties
+ * still write their own `evaluate`; this is not added to the public SDK surface.
+ */
+export declare function createSessionMilestone(spec: SessionMilestoneSpec): AchievementDef;
+/** Legacy lifetime counter achievements (v1), carried into the v2 model. */
+export declare const COUNTER_ACHIEVEMENTS: readonly AchievementDef[];
+/** P6 lifetime progression milestones (30 new, across 7 five-tier chains). */
+export declare const MILESTONE_ACHIEVEMENTS: readonly AchievementDef[];
+/** Every built-in Lifetime progression achievement (legacy counters + new milestones). */
+export declare const LIFETIME_ACHIEVEMENTS: readonly AchievementDef[];
+/**
+ * The first batch of behavior achievements (v0.2). Session-scoped: each reads
+ * `ctx.session`, which the reducer resets per session, so behavior never leaks
+ * across sessions. Thresholds are the literal spec from Task 05.
+ */
+export declare const BEHAVIOR_ACHIEVEMENTS: readonly AchievementDef[];
+/**
+ * P7 trajectory / session-behavior batch: four five-tier session chains
+ * (session-marathon / turn-depth / tool-barrage / time-anomaly), 20 achievements
+ * total. Each reads one O(1) session metric via `createSessionMilestone`.
+ *
+ * Behavior XP stays below the Lifetime milestone scale (10 / 20 / 40 / 70 / 120)
+ * so a repeatably constructible session condition never out-earns lifetime work.
+ * The duration chain reads seconds (`Math.floor(ms / 1000)`) so the Badge Wall
+ * shows a sane `30 / 30` instead of a raw-millisecond `30000 / 30000`.
+ */
+export declare const TRAJECTORY_ACHIEVEMENTS: readonly AchievementDef[];
+/** All built-in achievements: lifetime counters + P6 milestones + behavior + P7 trajectory. */
 export declare const BUILTIN_ACHIEVEMENTS: readonly AchievementDef[];
+/** The built-in achievements expressed as the default Pack (same registry path). */
+export declare const BUILTIN_PACK: AchievementPack;
 /** Serialized achievement view the browser half can render (no functions). */
 export interface AchievementView {
     id: string;
     icon: string;
     title: LocalizedText;
     description: LocalizedText;
+    flavorText?: LocalizedText;
+    rarity: AchievementRarity;
+    xp: number;
+    scope: AchievementScope;
+    hidden: boolean;
 }
-/** Strip the predicate so a definition is safe to send to the browser half. */
+/** Strip the `evaluate` predicate so a definition is safe to send to the browser half. */
 export declare function toAchievementView(def: AchievementDef): AchievementView;
-/** The configured runtime shape the Host exposes to the browser half. */
 export interface AchievementsSettings {
     /** Master switch for unlock toasts + badge updates. */
     enabled: boolean;

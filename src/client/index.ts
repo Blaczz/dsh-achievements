@@ -1,19 +1,21 @@
 /**
  * Achievements plugin, browser half: polls the read-only state API, shows an
- * unlock toast when new achievements arrive, exposes `ctx.achievements` for
- * other plugins, and registers the badge panel in the settings page.
+ * unlock toast when new achievements arrive, exposes `ctx.achievementsState`
+ * for other client plugins, and registers the badge panel in the settings page.
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import { HttpAchievementsClient } from './achievements-client.ts'
 import { BadgePanel } from './badge-panel.tsx'
 import { showUnlockToast } from './toast.ts'
+import { createUnlockTracker } from './unlock-tracker.ts'
+import { ACHIEVEMENTS_EVENTS_API_PATH } from '../api.ts'
 
 export type { BadgePanelInjected, BadgePanelProps } from './badge-panel.tsx'
 export { HttpAchievementsClient } from './achievements-client.ts'
 
-/** Public service other client plugins can inject and call. */
-export interface AchievementsService {
+/** Public client-side service other plugins can inject and call. */
+export interface AchievementsStateService {
   /** Re-poll the state API. */
   refresh(): Promise<void>
   /** Currently unlocked achievement ids. */
@@ -25,7 +27,8 @@ export const inject = ['slots']
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
-    achievements: AchievementsService
+    /** Client-side state accessor (the Host's `ctx.achievements` is the SDK). */
+    achievementsState: AchievementsStateService
   }
 }
 
@@ -45,27 +48,26 @@ function elapsedOf(ts: number | undefined, now = Date.now()): string | null {
  */
 export function apply(ctx: ClientContext): void {
   const client = new HttpAchievementsClient()
-  let lastUnlocked = new Set<string>()
+  const tracker = createUnlockTracker()
 
   const checkUnlocks = (): void => {
     const snap = client.getSnapshot()
-    if (snap === null || !snap.settings.enabled || !snap.settings.toastEnabled) return
-    const current = new Set(Object.keys(snap.state.unlocked))
-    const fresh = [...current].filter(id => !lastUnlocked.has(id))
-    if (fresh.length > 0) {
-      for (const id of fresh) {
-        const def = snap.achievements.find(achievement => achievement.id === id)
-        if (def !== undefined) showUnlockToast(def, elapsedOf(snap.state.unlocked[id]))
-      }
+    if (snap === null) return
+    // First snapshot only seeds the baseline; toasting stays gated by settings.
+    const fresh = tracker.diff(Object.keys(snap.state.profile.unlocked))
+    if (!snap.settings.enabled || !snap.settings.toastEnabled) return
+    for (const id of fresh) {
+      const def = snap.achievements.find(achievement => achievement.id === id)
+      if (def !== undefined) showUnlockToast(def, elapsedOf(snap.state.profile.unlocked[id]))
     }
-    lastUnlocked = current
   }
 
   const refresh = (): void => {
     void client.refresh().then(checkUnlocks).catch(() => {})
   }
 
-  // Poll on mount, on tab focus / visibility, and every 30s while visible.
+  // Poll on mount, on tab focus / visibility, and every 30s while visible —
+  // polling is the fallback; the SSE downlink below is the primary path.
   ctx.effect(() => {
     refresh()
     const onFocus = (): void => refresh()
@@ -73,18 +75,25 @@ export function apply(ctx: ClientContext): void {
     window.addEventListener('focus', onFocus)
     document.addEventListener('visibilitychange', onVisible)
     const timer = window.setInterval(() => { if (!document.hidden) refresh() }, 30_000)
+
+    // Real-time unlock push: on an `unlock` frame, repull state; the tracker
+    // dedupes, so push + poll around the same time never double-toast.
+    const events = new EventSource(ACHIEVEMENTS_EVENTS_API_PATH)
+    events.addEventListener('unlock', () => refresh())
+
     return () => {
       window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onVisible)
       window.clearInterval(timer)
+      events.close()
       client.dispose()
     }
   }, 'achievements: poll')
 
-  // Cross-plugin service.
-  ctx.provide('achievements', {
+  // Cross-plugin client-side state service.
+  ctx.provide('achievementsState', {
     refresh,
-    unlockedIds: () => [...lastUnlocked],
+    unlockedIds: () => tracker.currentIds(),
   })
 
   // Settings page badge panel.

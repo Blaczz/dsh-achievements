@@ -1,11 +1,14 @@
 /** Reactive browser client for the achievements read-only state API. */
-import type { AchievementState, AchievementView, AchievementsSettings } from '../achievements.ts'
+import type { AchievementProgressView, AchievementView, AchievementsSettings } from '../achievements.ts'
+import type { AchievementState } from '../state.ts'
 import { ACHIEVEMENTS_STATE_API_PATH } from '../api.ts'
 
 export interface AchievementsSnapshot {
   settings: AchievementsSettings
   achievements: AchievementView[]
   state: AchievementState
+  /** Per-achievement progress/target, evaluated host-side against the latest session. */
+  progress: Record<string, AchievementProgressView>
 }
 
 export interface AchievementsClient {
