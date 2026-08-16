@@ -1,6 +1,6 @@
 # dsh-achievements 🏆
 
-> An achievement / gamification plugin for DeepSeek Harness: cross-session badges for turns, tool calls, sessions and daily streaks, with a badge panel, unlock toasts and a `ctx.achievements` service. Zero core changes.
+> An achievement / gamification plugin for DeepSeek Harness: cross-session badges for turns, tool calls, sessions and daily streaks, with a badge panel, unlock toasts and a `ctx.achievements` service. Zero core changes. A fork of [Blaczz/dsh-achievements](https://github.com/Blaczz/dsh-achievements) adding behavior achievements, the `ctx.achievements` SDK and a sharing layer.
 
 [English](./README.md) | [简体中文](./README.zh.md)
 
@@ -28,7 +28,11 @@ Behavior achievements (per-session, v0.2):
 | 💣 YOLO | edit 8 files before your first test |
 | 🔥 It Works Eventually | pass after 5 failed tests |
 | 🎰 Surely This Time | same test command fails 5 times in a row |
+| 🎯 One Shot | pass the first test after a single edit |
+| 📚 Librarian | read 30 distinct files in one session |
 | 🌱 Touch Grass | 100 tool calls in one session |
+| 🦴 Dependency Archaeologist | read a file inside a dependency directory |
+| 🗿 Gigachad | read, edit and pass a test within 5 tool calls |
 
 ## 📦 Install
 
@@ -36,7 +40,7 @@ Prereqs: DSH (`dsh web` works), Node ≥ 22.19, pnpm.
 
 ```bash
 # From GitHub (prebuilt lib/ committed, no allowBuilds needed)
-dsh plugin --profile web add "github:Blaczz/dsh-achievements#main"
+dsh plugin --profile web add "github:luumod/dsh-achievements#main"
 
 # Local directory
 cd dsh-achievements && npm install --legacy-peer-deps && npm run build
@@ -113,4 +117,4 @@ dsh-achievements/
 
 ## ⚖️ License
 
-MIT © 2026 Blaczz. An independent community plugin, not affiliated with [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
+MIT © 2026 Blaczz (upstream). This repo is a fork of [Blaczz/dsh-achievements](https://github.com/Blaczz/dsh-achievements), adding behavior achievements, the `ctx.achievements` SDK and a sharing layer on top; if the upstream PR lands, this fork will be archived in favor of the original. An independent community plugin, not affiliated with [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).

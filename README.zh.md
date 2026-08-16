@@ -1,6 +1,6 @@
 # dsh-achievements 🏆
 
-> DeepSeek Harness 成就/游戏化插件：跨会话的成就徽章系统——自动累计回合、工具调用、会话数与连续天数，解锁时弹 toast，设置页有完整徽章墙，并提供 `ctx.achievements` 服务。零核心改动。
+> DeepSeek Harness 成就/游戏化插件：跨会话的成就徽章系统——自动累计回合、工具调用、会话数与连续天数，解锁时弹 toast，设置页有完整徽章墙，并提供 `ctx.achievements` 服务。零核心改动。本仓库是 [Blaczz/dsh-achievements](https://github.com/Blaczz/dsh-achievements) 的 fork，在其基础上新增行为成就、`ctx.achievements` SDK 与分享层。
 
 [English](./README.md) | 简体中文
 
@@ -28,7 +28,11 @@
 | 💣 先斩后奏 | 第一次测试前修改 8 个文件 |
 | 🔥 终于通了 | 测试失败 5 次后成功 |
 | 🎰 这次一定 | 同一测试命令连续失败 5 次 |
+| 🎯 一发入魂 | 只改一次，首次测试即通过 |
+| 📚 图书管理员 | 单会话读取 30 个不同文件 |
 | 🌱 出门走走 | 单会话工具调用 100 次 |
+| 🦴 依赖考古学家 | 读取依赖目录（node_modules / site-packages / vendor）下的文件 |
+| 🗿 巨佬模式 | ≤5 次工具调用内完成 读→改→测 且通过 |
 
 ## 📦 安装
 
@@ -36,7 +40,7 @@
 
 ```bash
 # GitHub 安装（预构建 lib/ 已提交，无需 allowBuilds）
-dsh plugin --profile web add "github:Blaczz/dsh-achievements#main"
+dsh plugin --profile web add "github:luumod/dsh-achievements#main"
 
 # 本地目录安装
 cd dsh-achievements && npm install --legacy-peer-deps && npm run build
@@ -115,4 +119,4 @@ dsh-achievements/
 
 ## ⚖️ License
 
-MIT © 2026 Blaczz。独立社区插件，与 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 无关。
+MIT © 2026 Blaczz（上游）。本仓库是 [Blaczz/dsh-achievements](https://github.com/Blaczz/dsh-achievements) 的 fork，在其基础上新增行为成就、`ctx.achievements` SDK 与分享层；若上游 PR 合并，本 fork 将归档并让位于原仓库。独立社区插件，与 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 无关。
