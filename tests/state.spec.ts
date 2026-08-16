@@ -127,3 +127,81 @@ describe('session buckets', () => {
     expect(Object.keys(sessions).length).toBe(MAX_SESSIONS)
   })
 })
+
+describe('P6 lifetime counter backfill', () => {
+  function session(overrides: Partial<SessionAchievementState>): SessionAchievementState {
+    return { ...createInitialSessionState(), ...overrides }
+  }
+
+  it('backfills missing P6 fields from retained sessions (lower bound)', () => {
+    const v2 = {
+      version: 2,
+      profile: { turns: 20, currentStreak: 3, longestStreak: 7, lastActiveDay: '2026-01-05' },
+      sessions: {
+        a: session({ filesRead: { 'x.ts': 2, 'y.ts': 1 }, filesEdited: { 'z.ts': 2 }, tests: { runs: 2, passed: 1, failed: 1 } }),
+        b: session({ filesRead: { 'x.ts': 3, 'w.ts': 2 }, filesEdited: { 'q.ts': 1 }, tests: { runs: 1, passed: 1, failed: 0 } }),
+      },
+    }
+    const state = migrateState(v2)
+    expect(state.profile.fileReads).toBe(8)
+    expect(state.profile.fileEdits).toBe(3)
+    expect(state.profile.testRuns).toBe(3)
+    expect(state.profile.testPasses).toBe(2)
+    expect(state.profile.testFailures).toBe(1)
+    // longestStreak (7) is the best provable active-days lower bound.
+    expect(state.profile.activeDays).toBe(7)
+  })
+
+  it('respects a persisted P6 field even when sessions sum lower', () => {
+    const v2 = {
+      version: 2,
+      profile: { fileReads: 500, turns: 3 },
+      sessions: { a: session({ filesRead: { 'x.ts': 8 } }) },
+    }
+    const state = migrateState(v2)
+    expect(state.profile.fileReads).toBe(500)
+  })
+
+  it('treats an explicit persisted 0 as present, not missing', () => {
+    const v2 = {
+      version: 2,
+      profile: { fileReads: 0 },
+      sessions: { a: session({ filesRead: { 'x.ts': 8 } }) },
+    }
+    const state = migrateState(v2)
+    expect(state.profile.fileReads).toBe(0)
+  })
+
+  it('derives activeDays lower bound from streak / lastActiveDay facts', () => {
+    const make = (profile: Record<string, unknown>) => migrateState({ version: 2, profile, sessions: {} })
+    expect(make({ currentStreak: 3, longestStreak: 7, lastActiveDay: '2026-01-05' }).profile.activeDays).toBe(7)
+    expect(make({ currentStreak: 0, longestStreak: 0, lastActiveDay: '2026-01-05' }).profile.activeDays).toBe(1)
+    expect(make({}).profile.activeDays).toBe(0)
+  })
+
+  it('normalizes twice idempotently for P6 counters', () => {
+    const v2 = {
+      version: 2,
+      profile: { turns: 20, currentStreak: 3, longestStreak: 7, lastActiveDay: '2026-01-05' },
+      sessions: { a: session({ filesRead: { 'x.ts': 3 }, tests: { runs: 2, passed: 1, failed: 1 } }) },
+    }
+    const once = migrateState(v2)
+    const twice = migrateState(JSON.parse(JSON.stringify(once)))
+    expect(twice.profile.activeDays).toBe(once.profile.activeDays)
+    expect(twice.profile.fileReads).toBe(once.profile.fileReads)
+    expect(twice.profile.fileEdits).toBe(once.profile.fileEdits)
+    expect(twice.profile.testRuns).toBe(once.profile.testRuns)
+    expect(twice.profile.testPasses).toBe(once.profile.testPasses)
+    expect(twice.profile.testFailures).toBe(once.profile.testFailures)
+  })
+
+  it('initializes all six P6 fields to 0 for a fresh state', () => {
+    const state = createInitialState()
+    expect(state.profile.activeDays).toBe(0)
+    expect(state.profile.fileReads).toBe(0)
+    expect(state.profile.fileEdits).toBe(0)
+    expect(state.profile.testRuns).toBe(0)
+    expect(state.profile.testPasses).toBe(0)
+    expect(state.profile.testFailures).toBe(0)
+  })
+})

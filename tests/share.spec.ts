@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { BUILTIN_ACHIEVEMENTS, toAchievementView } from '../src/achievements.ts'
 import {
-  BUILTIN_CHAINS, buildAchievementCard, buildAgentWrapped, buildShareText, chainProgressOf,
+  BUILTIN_CHAINS, MILESTONE_CHAINS, SPECIAL_CHAINS, buildAchievementCard, buildAgentWrapped, buildShareText, chainProgressOf,
 } from '../src/share.ts'
 import { createInitialSessionState, createInitialState } from '../src/state.ts'
 
@@ -24,7 +24,7 @@ describe('buildShareText', () => {
     state.profile.unlocked = { 'first-turn': 1, 'streak-7': 2 }
     const text = buildShareText(state, VIEWS)
     expect(text).toContain('Lv.2')
-    expect(text).toContain('2/18')
+    expect(text).toContain('2/48')
     const legendary = text.indexOf('七日火山')
     const common = text.indexOf('初次登场')
     expect(legendary).toBeGreaterThan(-1)
@@ -70,12 +70,18 @@ describe('buildAgentWrapped', () => {
 })
 
 describe('achievement chains', () => {
-  it('computes progress and the next step', () => {
-    const chain = BUILTIN_CHAINS[0]!
-    expect(chainProgressOf(chain, {})).toEqual({ chain, completed: 0, total: 3, nextId: 'first-turn', done: false })
+  it('computes progress and the next step for the five-tier turns chain', () => {
+    const chain = MILESTONE_CHAINS[0]!
+    expect(chainProgressOf(chain, {})).toEqual({ chain, completed: 0, total: 5, nextId: 'first-turn', done: false })
     expect(chainProgressOf(chain, { 'first-turn': 1 }).completed).toBe(1)
-    expect(chainProgressOf(chain, { 'first-turn': 1, 'ten-turns': 2 }).nextId).toBe('hundred-turns')
-    expect(chainProgressOf(chain, { 'first-turn': 1, 'ten-turns': 2, 'hundred-turns': 3 }).done).toBe(true)
+    expect(chainProgressOf(chain, { 'first-turn': 1, 'turns-25': 2, 'turns-50': 3 }).nextId).toBe('hundred-turns')
+    expect(chainProgressOf(chain, { 'first-turn': 1, 'turns-25': 2, 'turns-50': 3, 'hundred-turns': 4, 'turns-500': 5 }).done).toBe(true)
+  })
+
+  it('splits seven milestone chains from the special chains', () => {
+    expect(MILESTONE_CHAINS).toHaveLength(7)
+    expect(SPECIAL_CHAINS.map(c => c.id)).toEqual(['streaks', 'behavior'])
+    expect(BUILTIN_CHAINS).toEqual([...MILESTONE_CHAINS, ...SPECIAL_CHAINS])
   })
 
   it('only references built-in achievement ids', () => {

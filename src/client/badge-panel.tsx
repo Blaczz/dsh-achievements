@@ -1,9 +1,9 @@
 /**
  * BadgePanel: the achievements settings page, registered into the
  * `settings.section` slot. Renders the Agent Profile (level, XP, persona,
- * rarity distribution, favorite tool), lifetime counters, the achievement grid
- * (rarity / progress / flavorText / hidden masking), and the latest session
- * report.
+ * rarity distribution, favorite tool), the seven lifetime counters + a
+ * separate streak line, the achievement grid split into "成长里程碑 / 特殊行为",
+ * and the latest session report.
  */
 import { useEffect, useState } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -11,8 +11,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { AchievementsClient, AchievementsSnapshot } from './achievements-client.ts'
 import { RARITY_META } from '../gamification.ts'
 import { buildProfileView, buildSessionSummary } from '../profile.ts'
-import { BUILTIN_CHAINS, buildAgentWrapped, buildShareText, chainProgressOf } from '../share.ts'
-import type { AchievementRarity } from '../achievements.ts'
+import { MILESTONE_CHAINS, SPECIAL_CHAINS, buildAgentWrapped, buildShareText, chainProgressOf } from '../share.ts'
+import type { AchievementProgressView, AchievementRarity, AchievementView } from '../achievements.ts'
 
 /** Injected business face: the shared client (see the client apply). */
 export interface BadgePanelInjected {
@@ -31,11 +31,15 @@ export function elapsedLabel(unlockedAt: number | undefined, now = Date.now()): 
   return `${days} 天前`
 }
 
+/** Seven lifetime progression metrics; streak is shown separately. */
 const STAT_ROWS = [
   { key: 'turns', label: '回合' },
   { key: 'toolCalls', label: '工具调用' },
   { key: 'sessions', label: '会话' },
-  { key: 'currentStreak', label: '连续天数' },
+  { key: 'activeDays', label: '活跃天数' },
+  { key: 'fileReads', label: '读取次数' },
+  { key: 'fileEdits', label: '修改次数' },
+  { key: 'testRuns', label: '测试' },
 ] as const
 
 const RARITY_ORDER: readonly AchievementRarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary']
@@ -47,6 +51,73 @@ const REPORT_ROWS = [
   { key: 'tests', label: '测试' },
   { key: 'failures', label: '失败' },
 ] as const
+
+/** One achievement card; reused across the milestone and special sections. */
+function AchievementCard({ def, unlockedAt, progress }: {
+  def: AchievementView
+  unlockedAt: number | undefined
+  progress: AchievementProgressView | undefined
+}) {
+  const unlocked = unlockedAt !== undefined
+  const rarity = RARITY_META[def.rarity]
+
+  // Hidden + locked: leak no real content.
+  if (def.hidden === true && !unlocked) {
+    return (
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', borderRadius: 10, padding: 10, border: '1px solid rgba(128,128,128,0.18)', opacity: 0.55 }}>
+        <div style={{ fontSize: 24, flex: 'none' }}>🔒</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>???</div>
+          <div style={{ fontSize: 11, opacity: 0.7 }}>未解锁的隐藏成就</div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{
+      display: 'flex', gap: 10, alignItems: 'flex-start', borderRadius: 10, padding: 10,
+      border: `1px solid ${unlocked ? rarity.color : 'rgba(128,128,128,0.18)'}`,
+      background: unlocked ? `${rarity.color}1a` : 'transparent',
+      opacity: unlocked ? 1 : 0.6,
+    }}>
+      <div style={{ fontSize: 24, flex: 'none', lineHeight: 1.3 }}>{unlocked ? def.icon : '🔒'}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{def.title.zh}</span>
+          <span style={{ fontSize: 10, color: rarity.color, whiteSpace: 'nowrap' }}>{rarity.label.zh}</span>
+        </div>
+        <div style={{ fontSize: 11, opacity: 0.7 }}>{def.description.zh}</div>
+        {unlocked && def.flavorText !== undefined && (
+          <div style={{ fontSize: 11, opacity: 0.55, fontStyle: 'italic', paddingTop: 2 }}>{def.flavorText.zh}</div>
+        )}
+        {!unlocked && progress?.target !== undefined && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 6 }}>
+            <div style={{ flex: 1, height: 5, borderRadius: 3, background: 'rgba(128,128,128,0.15)', overflow: 'hidden' }}>
+              <div style={{ width: `${Math.min(100, Math.round(((progress.progress ?? 0) / progress.target) * 100))}%`, height: '100%', background: rarity.color, borderRadius: 3 }} />
+            </div>
+            <span style={{ fontSize: 10, opacity: 0.7, whiteSpace: 'nowrap' }}>{progress.progress ?? 0}/{progress.target}</span>
+          </div>
+        )}
+        <div style={{ fontSize: 10, color: rarity.color, paddingTop: 4 }}>+{def.xp} XP</div>
+      </div>
+      {unlocked && <div style={{ fontSize: 11, flex: 'none', opacity: 0.7 }}>{elapsedLabel(unlockedAt)}</div>}
+    </div>
+  )
+}
+
+/** A single chain progress row (title + bar + n/total). */
+function ChainRow({ cp }: { cp: ReturnType<typeof chainProgressOf> }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <span style={{ fontSize: 12, width: 88, flex: 'none', opacity: 0.85 }}>{cp.chain.title.zh}</span>
+      <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'rgba(128,128,128,0.15)', overflow: 'hidden' }}>
+        <div style={{ width: `${cp.total === 0 ? 0 : Math.round((cp.completed / cp.total) * 100)}%`, height: '100%', background: cp.done ? '#34d399' : '#fbbf24', borderRadius: 3 }} />
+      </div>
+      <span style={{ fontSize: 11, opacity: 0.7, flex: 'none' }}>{cp.completed}/{cp.total}</span>
+    </div>
+  )
+}
 
 /** The settings page body. */
 export function BadgePanel({ achievements }: BadgePanelProps) {
@@ -64,8 +135,19 @@ export function BadgePanel({ achievements }: BadgePanelProps) {
   const lastSessionId = sessionIds[sessionIds.length - 1]
   const summary = lastSessionId === undefined ? null : buildSessionSummary(state, lastSessionId)
   const wrapped = buildAgentWrapped(state, defs)
-  const chains = BUILTIN_CHAINS.map(chain => chainProgressOf(chain, state.profile.unlocked))
   const shareText = buildShareText(state, defs)
+
+  // Milestone ids are derived from the seven chains (single source of truth),
+  // never hardcoded in JSX; everything else is a "special" achievement.
+  const milestoneIds = new Set(MILESTONE_CHAINS.flatMap(chain => chain.achievementIds))
+  const milestoneDefs = MILESTONE_CHAINS.flatMap(chain =>
+    chain.achievementIds
+      .map(id => defs.find(def => def.id === id))
+      .filter((def): def is AchievementView => def !== undefined),
+  )
+  const specialDefs = defs.filter(def => !milestoneIds.has(def.id))
+  const milestoneChains = MILESTONE_CHAINS.map(chain => chainProgressOf(chain, state.profile.unlocked))
+  const specialChains = SPECIAL_CHAINS.map(chain => chainProgressOf(chain, state.profile.unlocked))
 
   const copyShare = (): void => {
     if (navigator.clipboard === undefined) return
@@ -114,72 +196,50 @@ export function BadgePanel({ achievements }: BadgePanelProps) {
         })}
       </div>
 
-      {/* Lifetime counters */}
-      <div style={{ display: 'flex', gap: 10, paddingBottom: 12 }}>
+      {/* Lifetime counters (responsive grid) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(78px, 1fr))', gap: 8, paddingBottom: 10 }}>
         {STAT_ROWS.map(row => (
-          <div key={row.key} style={{ flex: 1, textAlign: 'center', borderRadius: 10, padding: '10px 6px', background: 'rgba(128,128,128,0.08)' }}>
+          <div key={row.key} style={{ textAlign: 'center', borderRadius: 10, padding: '10px 6px', background: 'rgba(128,128,128,0.08)' }}>
             <div style={{ fontSize: 20, fontWeight: 700 }}>{state.profile[row.key]}</div>
             <div style={{ fontSize: 11, opacity: 0.7 }}>{row.label}</div>
           </div>
         ))}
+      </div>
+      {/* Streak is a separate signal, not one of the seven progression metrics. */}
+      <div style={{ fontSize: 12, opacity: 0.8, paddingBottom: 12 }}>
+        🔥 当前连续 {state.profile.currentStreak} 天 · 最长连续 {state.profile.longestStreak} 天
+      </div>
+
+      {/* Growth routes (the seven five-tier chains) */}
+      <div style={{ fontSize: 13, fontWeight: 700, paddingBottom: 8 }}>📈 成长路线</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingBottom: 12 }}>
+        {milestoneChains.map(cp => <ChainRow key={cp.chain.id} cp={cp} />)}
       </div>
 
       <div style={{ fontSize: 13, fontWeight: 700, paddingBottom: 8 }}>
         🏆 成就（{profile.unlockedCount}/{defs.length}）
       </div>
 
-      {/* Achievement grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 8 }}>
-        {defs.map(def => {
-          const unlockedAt = state.profile.unlocked[def.id]
-          const unlocked = unlockedAt !== undefined
-          const rarity = RARITY_META[def.rarity]
+      {/* Milestone achievements: fixed progression order per chain */}
+      <div style={{ fontSize: 12, fontWeight: 600, opacity: 0.75, paddingBottom: 6 }}>成长里程碑</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 8, paddingBottom: 12 }}>
+        {milestoneDefs.map(def => (
+          <AchievementCard key={def.id} def={def} unlockedAt={state.profile.unlocked[def.id]} progress={snap.progress[def.id]} />
+        ))}
+      </div>
 
-          // Hidden + locked: leak no real content.
-          if (def.hidden === true && !unlocked) {
-            return (
-              <div key={def.id} style={{ display: 'flex', gap: 10, alignItems: 'center', borderRadius: 10, padding: 10, border: '1px solid rgba(128,128,128,0.18)', opacity: 0.55 }}>
-                <div style={{ fontSize: 24, flex: 'none' }}>🔒</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>???</div>
-                  <div style={{ fontSize: 11, opacity: 0.7 }}>未解锁的隐藏成就</div>
-                </div>
-              </div>
-            )
-          }
+      {/* Special achievements: streaks + behavior, registration order */}
+      <div style={{ fontSize: 12, fontWeight: 600, opacity: 0.75, paddingBottom: 6 }}>特殊行为</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 8, paddingBottom: 12 }}>
+        {specialDefs.map(def => (
+          <AchievementCard key={def.id} def={def} unlockedAt={state.profile.unlocked[def.id]} progress={snap.progress[def.id]} />
+        ))}
+      </div>
 
-          const progress = snap.progress[def.id]
-          return (
-            <div key={def.id} style={{
-              display: 'flex', gap: 10, alignItems: 'flex-start', borderRadius: 10, padding: 10,
-              border: `1px solid ${unlocked ? rarity.color : 'rgba(128,128,128,0.18)'}`,
-              background: unlocked ? `${rarity.color}1a` : 'transparent',
-              opacity: unlocked ? 1 : 0.6,
-            }}>
-              <div style={{ fontSize: 24, flex: 'none', lineHeight: 1.3 }}>{unlocked ? def.icon : '🔒'}</div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>{def.title.zh}</span>
-                  <span style={{ fontSize: 10, color: rarity.color, whiteSpace: 'nowrap' }}>{rarity.label.zh}</span>
-                </div>
-                <div style={{ fontSize: 11, opacity: 0.7 }}>{def.description.zh}</div>
-                {unlocked && def.flavorText !== undefined && (
-                  <div style={{ fontSize: 11, opacity: 0.55, fontStyle: 'italic', paddingTop: 2 }}>{def.flavorText.zh}</div>
-                )}
-                {!unlocked && progress?.target !== undefined && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 6 }}>
-                    <div style={{ flex: 1, height: 5, borderRadius: 3, background: 'rgba(128,128,128,0.15)', overflow: 'hidden' }}>
-                      <div style={{ width: `${Math.min(100, Math.round(((progress.progress ?? 0) / progress.target) * 100))}%`, height: '100%', background: rarity.color, borderRadius: 3 }} />
-                    </div>
-                    <span style={{ fontSize: 10, opacity: 0.7, whiteSpace: 'nowrap' }}>{progress.progress ?? 0}/{progress.target}</span>
-                  </div>
-                )}
-                <div style={{ fontSize: 10, color: rarity.color, paddingTop: 4 }}>+{def.xp} XP</div>
-              </div>
-              {unlocked && <div style={{ fontSize: 11, flex: 'none', opacity: 0.7 }}>{elapsedLabel(unlockedAt)}</div>}
-            </div>
-          )
-        })}
+      {/* Special chains: streaks + behavior, kept separate from the seven routes */}
+      <div style={{ fontSize: 13, fontWeight: 700, padding: '4px 0 8px' }}>🎭 特殊链</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingBottom: 12 }}>
+        {specialChains.map(cp => <ChainRow key={cp.chain.id} cp={cp} />)}
       </div>
 
       {/* Latest session report */}
@@ -227,20 +287,6 @@ export function BadgePanel({ achievements }: BadgePanelProps) {
         {wrapped.topUnlock !== null && (
           <div style={{ fontSize: 12, opacity: 0.85 }}>🏆 最高稀有成就：{wrapped.topUnlock.icon} {wrapped.topUnlock.title.zh}</div>
         )}
-      </div>
-
-      {/* Achievement chains */}
-      <div style={{ fontSize: 13, fontWeight: 700, padding: '16px 0 8px' }}>🔗 成就链</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {chains.map(cp => (
-          <div key={cp.chain.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 12, width: 88, flex: 'none', opacity: 0.85 }}>{cp.chain.title.zh}</span>
-            <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'rgba(128,128,128,0.15)', overflow: 'hidden' }}>
-              <div style={{ width: `${cp.total === 0 ? 0 : Math.round((cp.completed / cp.total) * 100)}%`, height: '100%', background: cp.done ? '#34d399' : '#fbbf24', borderRadius: 3 }} />
-            </div>
-            <span style={{ fontSize: 11, opacity: 0.7, flex: 'none' }}>{cp.completed}/{cp.total}</span>
-          </div>
-        ))}
       </div>
 
       {/* Share (local, privacy-safe) */}

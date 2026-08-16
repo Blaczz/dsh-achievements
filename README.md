@@ -6,20 +6,21 @@
 
 A **DeepSeek Harness (DSH)** gamification plugin that quietly counts your real usage (turns, tool calls, sessions, consecutive days) and unlocks achievements at milestones, toasting in real time and showing a badge wall in the settings page. State survives across sessions (stored in the DSH home directory), and all counting rides the official `session/event` seam (`turn/end`, `tool/call`, `tool/result`) — **no core changes**.
 
-## ✨ Built-in achievements
+## ✨ Built-in achievements (48)
 
-| Achievement | Condition |
-|---|---|
-| 🎬 First Turn | complete 1 turn |
-| 🔟 Warming Up | 10 turns |
-| 💯 Century Club | 100 turns |
-| 🔧 Tool Time | first tool call |
-| 🛠️ Power Tooler | 100 tool calls |
-| 📚 Session Collector | 10 sessions |
-| 🔥 Three-Day Streak | 3 consecutive active days |
-| 🌋 Week on Fire | 7 consecutive active days |
+Achievements come in two tracks. Each of the **seven lifetime progression lines** has five tiers, always `common → uncommon → rare → epic → legendary` (10 / 30 / 75 / 175 / 400 XP for new milestones):
 
-Behavior achievements (per-session, v0.2):
+| Line | Common | Uncommon | Rare | Epic | Legendary |
+|---|---:|---:|---:|---:|---:|
+| 🎬 Turns | 1 | 25 | 50 | 100 | 500 |
+| 🔧 Tool calls | 1 | 25 | 100 | 500 | 2000 |
+| 💬 Sessions | 1 | 10 | 50 | 200 | 500 |
+| 🌅 Active days | 1 | 7 | 30 | 100 | 365 |
+| 📖 File reads | 10 | 100 | 500 | 2500 | 10000 |
+| ✏️ File edits | 1 | 10 | 50 | 250 | 1000 |
+| 🧪 Test runs | 1 | 10 | 50 | 250 | 1000 |
+
+Plus **special achievements**: streak days (`streak-3` / `streak-7`), the early `ten-turns` bonus, and ten per-session behavior badges:
 
 | Achievement | Condition |
 |---|---|
@@ -33,6 +34,8 @@ Behavior achievements (per-session, v0.2):
 | 🌱 Touch Grass | 100 tool calls in one session |
 | 🦴 Dependency Archaeologist | read a file inside a dependency directory |
 | 🗿 Gigachad | read, edit and pass a test within 5 tool calls |
+
+Lifetime counters (`turns`, `toolCalls`, `sessions`, `activeDays`, `fileReads`, `fileEdits`, `testRuns`) live on the profile and never depend on the 64-session retention window. On upgrade, missing counters are conservatively recovered from the retained sessions as a provable lower bound, and already-satisfied lifetime milestones are silently unlocked once (no toast storm).
 
 ## 📦 Install
 
@@ -52,7 +55,7 @@ dsh plugin --profile web add ./dsh-achievements
 ## 🎮 Usage
 
 1. Chat and let the agent work: turns, tool calls, new sessions and daily activity accumulate; a toast pops when a new achievement unlocks.
-2. **Settings → 🏆 成就**: four counters (turns / tool calls / sessions / streak) plus the badge wall (unlocked with timestamps, locked dimmed).
+2. **Settings → 🏆 成就**: seven lifetime counters (turns / tool calls / sessions / active days / file reads / file edits / test runs) plus a separate streak line, the seven `/5` growth routes, and the badge wall split into "成长里程碑 / 特殊行为" (unlocked with timestamps, locked dimmed).
 
 ## 🔌 For developers: the `ctx.achievements` SDK
 

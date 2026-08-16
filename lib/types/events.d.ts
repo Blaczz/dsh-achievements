@@ -56,5 +56,15 @@ export declare function isDependencyPath(path: string): boolean;
 export declare function classifyTool(name: string, args: unknown): ToolSummary;
 /** Parse the raw JSON arguments string from a session `tool/call` event; never throws. */
 export declare function parseToolArguments(raw: string): unknown;
+/**
+ * Classify one settled Code Mode sub-dispatch. `tool/code-dispatch` carries
+ * `arguments` already JSON-normalized (an object), unlike the native
+ * `tool/call` event's raw JSON string; a string payload is still parsed
+ * defensively so a malformed value falls back to the same safe classification
+ * as a native call. This reuses `classifyTool` — no second read/edit/test rule
+ * set — so a Code Mode sub-call and its native equivalent yield the same
+ * `ToolSummary`.
+ */
+export declare function classifyCodeDispatch(name: string, args: unknown): ToolSummary;
 export declare function buildTurnEndEvent(sessionId: string, seq: number): AchievementEvent;
 export declare function buildToolCallEvent(sessionId: string, seq: number, callId: string | null, tool: ToolSummary, isError: boolean): AchievementEvent;

@@ -1,6 +1,6 @@
 /** Event classifier fixtures: raw tool name + args → standardized behavior projection. */
 import { describe, expect, it } from 'vitest'
-import { classifyTool, isDependencyPath, isTestCommand, parseToolArguments } from '../src/events.ts'
+import { classifyCodeDispatch, classifyTool, isDependencyPath, isTestCommand, parseToolArguments } from '../src/events.ts'
 
 describe('classifyTool', () => {
   it('classifies read → file-read with path', () => {
@@ -78,5 +78,44 @@ describe('parseToolArguments', () => {
     expect(parseToolArguments('{"file_path":"a.ts"}')).toEqual({ file_path: 'a.ts' })
     expect(parseToolArguments('not json')).toBeUndefined()
     expect(parseToolArguments('')).toBeUndefined()
+  })
+})
+
+describe('classifyCodeDispatch (Code Mode sub-dispatch)', () => {
+  it('classifies a code-dispatch read → file-read with path (object args)', () => {
+    expect(classifyCodeDispatch('read', { file_path: 'src/a.ts' })).toEqual({ kind: 'file-read', name: 'read', path: 'src/a.ts' })
+  })
+
+  it('classifies a code-dispatch write/edit → file-edit', () => {
+    expect(classifyCodeDispatch('write', { file_path: 'a.ts', content: 'x' })).toEqual({ kind: 'file-edit', name: 'write', path: 'a.ts' })
+    expect(classifyCodeDispatch('edit', { file_path: 'a.ts', old_string: 'x', new_string: 'y' })).toEqual({ kind: 'file-edit', name: 'edit', path: 'a.ts' })
+  })
+
+  it('classifies a code-dispatch shell → shell-command, and a test runner → test-run', () => {
+    expect(classifyCodeDispatch('bash', { command: 'ls -la' })).toEqual({ kind: 'shell-command', name: 'bash', command: 'ls -la' })
+    expect(classifyCodeDispatch('bash', { command: 'npm test' })).toEqual({ kind: 'test-run', name: 'bash', command: 'npm test' })
+  })
+
+  it('falls back to other for unknown child tools', () => {
+    expect(classifyCodeDispatch('web_search', { query: 'x' })).toEqual({ kind: 'other', name: 'web_search' })
+    expect(classifyCodeDispatch('unknown_tool', {})).toEqual({ kind: 'other', name: 'unknown_tool' })
+  })
+
+  it('parses a string arguments payload defensively (no throw, same classification)', () => {
+    expect(classifyCodeDispatch('read', '{"file_path":"a.ts"}')).toEqual({ kind: 'file-read', name: 'read', path: 'a.ts' })
+    expect(classifyCodeDispatch('read', 'not json')).toEqual({ kind: 'file-read', name: 'read', path: undefined })
+  })
+
+  it('matches the native classifier for equivalent inputs', () => {
+    const cases: Array<[string, unknown]> = [
+      ['read', { file_path: 'a.ts' }],
+      ['write', { file_path: 'b.ts' }],
+      ['bash', { command: 'npm test' }],
+      ['bash', { command: 'ls' }],
+      ['web_search', { query: 'x' }],
+    ]
+    for (const [name, args] of cases) {
+      expect(classifyCodeDispatch(name, args)).toEqual(classifyTool(name, args))
+    }
   })
 })

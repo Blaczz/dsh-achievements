@@ -12,6 +12,8 @@
 
 在你的 Host 插件 `apply(ctx)` 里调用 `ctx.achievements.register(...)`（或 `registerPack(...)`）。注册即时生效：之后每一个 `session/event`（回合结束、工具结果）都会对所有已注册成就求值。**不需要**显式刷新。
 
+> **注册即静默评估 lifetime 成就**：`register` / `registerPack` 完成后，会对刚注册的 `scope === 'lifetime'` 定义做一次静默 reconcile —— 若当前 profile 已满足条件，会立即补解锁并发放 XP（幂等、不弹 toast、不记入任何 session 战报）。`scope === 'session'` 的定义不会被追溯，只在后续 live event 中正常评估。
+
 ```ts
 import type { Context } from '@deepseek-ai/cordis'
 
@@ -84,7 +86,7 @@ ctx.achievements.registerPack(PYTHON_PACK)
 | `readsBeforeFirstEdit` / `editsBeforeFirstTest` | 首个 edit/test 前的去重文件数 |
 | `failingStreak` / `failingCommand` | 同命令连续失败 |
 
-`ctx.profile` 常见字段：`turns / toolCalls / sessions / currentStreak / longestStreak / unlocked / xp / toolsByName`。
+`ctx.profile` 常见字段：`turns / toolCalls / sessions / currentStreak / longestStreak / activeDays / fileReads / fileEdits / testRuns / testPasses / testFailures / unlocked / xp / toolsByName`。
 
 ## ID 冲突
 
@@ -94,7 +96,7 @@ ctx.achievements.registerPack(PYTHON_PACK)
 [achievements] duplicate achievement id: "python-first-run"
 ```
 
-内置成就使用 `builtin` pack（`first-turn`、`deja-vu` 等 14 个 id），避免与它们重名。
+内置成就使用 `builtin` pack（48 个 id），避免与它们重名。
 
 ## 测试方式
 

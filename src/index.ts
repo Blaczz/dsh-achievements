@@ -10,26 +10,29 @@ import type {} from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-tools'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import {
-  applyEvent, BUILTIN_ACHIEVEMENTS, BUILTIN_PACK, computeProgress, DEFAULT_ACHIEVEMENTS_SETTINGS, toAchievementView,
+  applyEvent, BUILTIN_ACHIEVEMENTS, BUILTIN_PACK, computeProgress, DEFAULT_ACHIEVEMENTS_SETTINGS,
+  reconcileLifetimeAchievements, toAchievementView,
   type AchievementsSettings, type AchievementDef,
 } from './achievements.ts'
-import { createAchievementRegistry, type AchievementsSdk } from './sdk.ts'
+import { createAchievementRegistry, type AchievementPack, type AchievementsSdk } from './sdk.ts'
 import { buildContext } from './reducer.ts'
 import { loadState, saveState, type AchievementState } from './state.ts'
 import {
-  buildToolCallEvent, buildTurnEndEvent, classifyTool, parseToolArguments,
+  buildToolCallEvent, buildTurnEndEvent, classifyCodeDispatch, classifyTool, parseToolArguments,
   type AchievementEvent, type ToolSummary,
 } from './events.ts'
 import { ACHIEVEMENTS_API_PREFIX, ACHIEVEMENTS_EVENTS_API_PATH, ACHIEVEMENTS_STATE_API_PATH, unlockEventFrame } from './api.ts'
 
 // Public SDK surface (pure engine + model + classifier + reducer).
 export {
-  applyEvent, BEHAVIOR_ACHIEVEMENTS, BUILTIN_ACHIEVEMENTS, COUNTER_ACHIEVEMENTS,
+  applyEvent, BEHAVIOR_ACHIEVEMENTS, BUILTIN_ACHIEVEMENTS, COUNTER_ACHIEVEMENTS, LIFETIME_ACHIEVEMENTS,
+  MILESTONE_ACHIEVEMENTS, reconcileLifetimeAchievements,
   computeProgress, countersOf, fromCounterCondition, toAchievementView, DEFAULT_ACHIEVEMENTS_SETTINGS,
 } from './achievements.ts'
 export type {
   AchievementCounters, AchievementDef, AchievementEvaluation, AchievementProgress,
-  AchievementProgressView, AchievementRarity, AchievementScope, AchievementView, AchievementsSettings, LocalizedText,
+  AchievementProgressView, AchievementRarity, AchievementScope, AchievementView, AchievementsSettings,
+  LifetimeReconciliation, LocalizedText,
 } from './achievements.ts'
 export {
   createInitialProfile, createInitialSessionState, createInitialState, migrateState,
@@ -37,7 +40,7 @@ export {
 } from './state.ts'
 export type { AchievementState, ProfileState, SessionAchievementState, TestCounters } from './state.ts'
 export {
-  buildToolCallEvent, buildTurnEndEvent, classifyTool, isDependencyPath, isTestCommand, parseToolArguments,
+  buildToolCallEvent, buildTurnEndEvent, classifyCodeDispatch, classifyTool, isDependencyPath, isTestCommand, parseToolArguments,
 } from './events.ts'
 export type { AchievementEvent, ToolKind, ToolSummary } from './events.ts'
 export { buildContext, reduceState, yesterdayOf } from './reducer.ts'
@@ -49,7 +52,8 @@ export {
 } from './profile.ts'
 export type { Persona, ProfileViewModel, RarityCount, SessionSummary } from './profile.ts'
 export {
-  buildAchievementCard, buildAgentWrapped, buildShareText, chainProgressOf, BUILTIN_CHAINS,
+  buildAchievementCard, buildAgentWrapped, buildShareText, chainProgressOf,
+  BUILTIN_CHAINS, MILESTONE_CHAINS, SPECIAL_CHAINS,
 } from './share.ts'
 export type { AchievementCard, AchievementChain, AgentWrapped, ChainProgress } from './share.ts'
 export { ACHIEVEMENTS_API_PREFIX, ACHIEVEMENTS_STATE_API_PATH } from './api.ts'
@@ -83,17 +87,39 @@ export function apply(ctx: Context): void {
   const settings = ctx.settings.register(settingsNamespace('achievements'), SettingsSchema)
   let state: AchievementState = loadState()
 
-  // Achievement registry: built-in + third-party packs share one evaluation path.
-  const registry = createAchievementRegistry()
-  registry.registerPack(BUILTIN_PACK)
-  ctx.provide('achievements', {
-    register: registry.register,
-    registerPack: registry.registerPack,
-  })
-
   const persist = (): void => {
     try { saveState(state) } catch { /* persistence is best-effort */ }
   }
+
+  // Achievement registry: built-in + third-party packs share one evaluation path.
+  const registry = createAchievementRegistry()
+
+  // Silently unlock lifetime definitions already satisfied by the current
+  // profile, award their XP once, and persist. No reducer, no session
+  // attribution, no unlock broadcast — so an upgrade never toasts history.
+  const reconcile = (defs: readonly AchievementDef[]): void => {
+    const result = reconcileLifetimeAchievements(state, defs)
+    if (result.newlyUnlocked.length === 0) return
+    state = result.state
+    persist()
+    ctx.logger.info(`[achievements] reconciled ${result.newlyUnlocked.length} lifetime achievements (+${result.xpGained} XP)`)
+  }
+
+  registry.registerPack(BUILTIN_PACK)
+  reconcile(registry.list())
+
+  // Third-party registrations reconcile immediately too, so a new lifetime
+  // pack does not wait for the next live event to unlock.
+  ctx.provide('achievements', {
+    register: (def: AchievementDef): void => {
+      registry.register(def)
+      reconcile([def])
+    },
+    registerPack: (pack: AchievementPack): void => {
+      registry.registerPack(pack)
+      reconcile(pack.achievements)
+    },
+  })
 
   // SSE downlink: unlock events are pushed to every connected browser client
   // (persist → broadcast order guarantees a repull sees the persisted state).
@@ -138,6 +164,19 @@ export function apply(ctx: Context): void {
       const block = event.data.message.content[0]
       const isError = event.data.error !== undefined || block?.isError === true
       applyAchievementEvent(buildToolCallEvent(sessionId, event.seq, callId, summary, isError))
+    } else if (event.type === 'tool/code-dispatch') {
+      // Code Mode sub-dispatch: one settled child invocation. `tool/code-dispatch`
+      // already carries the normalized `arguments` object, the child tool `name`,
+      // a deterministic `subCallId`, and a settled `isError`, so it maps directly
+      // onto the same settled `tool-call` event the native path produces.
+      const data = event.data
+      applyAchievementEvent(buildToolCallEvent(
+        sessionId,
+        event.seq,
+        String(data.subCallId),
+        classifyCodeDispatch(data.name, data.arguments),
+        data.isError === true,
+      ))
     }
   })
 

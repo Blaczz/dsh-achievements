@@ -49,5 +49,14 @@ export interface ChainProgress {
     done: boolean;
 }
 export declare function chainProgressOf(chain: AchievementChain, unlocked: Record<string, number>): ChainProgress;
-/** Built-in chains over the shipped achievement ids. */
+/**
+ * The seven formal five-tier Lifetime progression chains. Each has exactly five
+ * nodes ordered common → uncommon → rare → epic → legendary (see Task 17), and
+ * drives the Badge Wall's milestone grouping — the UI derives milestone ids from
+ * these chains rather than hardcoding them.
+ */
+export declare const MILESTONE_CHAINS: readonly AchievementChain[];
+/** Non-progression special chains: streaks + session behavior. */
+export declare const SPECIAL_CHAINS: readonly AchievementChain[];
+/** Every built-in chain: seven milestone lines first, then special chains. */
 export declare const BUILTIN_CHAINS: readonly AchievementChain[];

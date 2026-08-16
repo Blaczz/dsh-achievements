@@ -96,6 +96,19 @@ export function parseToolArguments(raw: string): unknown {
   }
 }
 
+/**
+ * Classify one settled Code Mode sub-dispatch. `tool/code-dispatch` carries
+ * `arguments` already JSON-normalized (an object), unlike the native
+ * `tool/call` event's raw JSON string; a string payload is still parsed
+ * defensively so a malformed value falls back to the same safe classification
+ * as a native call. This reuses `classifyTool` — no second read/edit/test rule
+ * set — so a Code Mode sub-call and its native equivalent yield the same
+ * `ToolSummary`.
+ */
+export function classifyCodeDispatch(name: string, args: unknown): ToolSummary {
+  return classifyTool(name, typeof args === 'string' ? parseToolArguments(args) : args)
+}
+
 export function buildTurnEndEvent(sessionId: string, seq: number): AchievementEvent {
   return { kind: 'turn-end', sessionId, seq }
 }

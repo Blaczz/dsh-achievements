@@ -51,6 +51,23 @@ export interface AchievementProgressView {
 }
 /** Evaluate every definition and keep only the ones reporting progress/target. */
 export declare function computeProgress(defs: readonly AchievementDef[], ctx: AchievementContext): Record<string, AchievementProgressView>;
+/** Result of one silent reconciliation pass. */
+export interface LifetimeReconciliation {
+    state: AchievementState;
+    newlyUnlocked: AchievementDef[];
+    xpGained: number;
+}
+/**
+ * Silently unlock every still-locked `scope === 'lifetime'` definition whose
+ * `evaluate` already holds against the current profile, awarding its XP once.
+ *
+ * Deliberately NOT `applyEvent`: it runs no reducer, writes no session
+ * attribution, and the caller must not broadcast the resulting unlocks. The
+ * unlock timestamp is the reconciliation moment (the "system confirmed" time),
+ * not a fabricated historical completion date. Idempotent via the same
+ * `id in unlocked` guard as the live engine.
+ */
+export declare function reconcileLifetimeAchievements(state: AchievementState, defs: readonly AchievementDef[], now?: number): LifetimeReconciliation;
 /** The v1 counter view, kept so existing counter rules need no rewrite. */
 export interface AchievementCounters {
     turns: number;
@@ -66,15 +83,40 @@ export declare function fromCounterCondition(base: {
     title: LocalizedText;
     description: LocalizedText;
 }, condition: (counters: AchievementCounters) => boolean, overrides?: Partial<Pick<AchievementDef, 'rarity' | 'xp' | 'scope' | 'hidden' | 'flavorText'>>): AchievementDef;
+/** Internal spec for one Lifetime threshold milestone (not public SDK surface). */
+interface LifetimeMilestoneSpec {
+    id: string;
+    icon: string;
+    title: LocalizedText;
+    description: LocalizedText;
+    flavorText?: LocalizedText;
+    rarity: AchievementRarity;
+    xp: number;
+    target: number;
+    /** Reads the lifetime metric this milestone measures from the profile. */
+    value(profile: ProfileState): number;
+}
+/**
+ * Build one Lifetime threshold achievement with a standard
+ * `{ unlocked, progress, target }` evaluation. `progress` is the raw metric,
+ * not clamped to `target`, so downstream view models keep the true value and
+ * the UI caps the bar width itself. Kept internal: third parties may still
+ * write their own `evaluate`; this is not added to the public SDK surface.
+ */
+export declare function createLifetimeMilestone(spec: LifetimeMilestoneSpec): AchievementDef;
 /** Legacy lifetime counter achievements (v1), carried into the v2 model. */
 export declare const COUNTER_ACHIEVEMENTS: readonly AchievementDef[];
+/** P6 lifetime progression milestones (30 new, across 7 five-tier chains). */
+export declare const MILESTONE_ACHIEVEMENTS: readonly AchievementDef[];
+/** Every built-in Lifetime progression achievement (legacy counters + new milestones). */
+export declare const LIFETIME_ACHIEVEMENTS: readonly AchievementDef[];
 /**
  * The first batch of behavior achievements (v0.2). Session-scoped: each reads
  * `ctx.session`, which the reducer resets per session, so behavior never leaks
  * across sessions. Thresholds are the literal spec from Task 05.
  */
 export declare const BEHAVIOR_ACHIEVEMENTS: readonly AchievementDef[];
-/** All built-in achievements: lifetime counters + first behavior batch. */
+/** All built-in achievements: lifetime counters + P6 milestones + behavior batch. */
 export declare const BUILTIN_ACHIEVEMENTS: readonly AchievementDef[];
 /** The built-in achievements expressed as the default Pack (same registry path). */
 export declare const BUILTIN_PACK: AchievementPack;

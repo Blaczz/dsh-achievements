@@ -43,6 +43,12 @@ function reduceTurnEnd(
   const profile: ProfileState = { ...state.profile }
   profile.turns += 1
 
+  // activeDays must be decided against the PREVIOUS day before lastActiveDay
+  // is rewritten, otherwise every turn looks like "same day".
+  if (profile.lastActiveDay === null || profile.lastActiveDay !== today) {
+    profile.activeDays += 1
+  }
+
   if (!profile.seenSessions.includes(event.sessionId)) {
     profile.seenSessions = [...profile.seenSessions, event.sessionId]
     profile.sessions = profile.seenSessions.length
@@ -78,9 +84,18 @@ function reduceToolCall(
     toolsByName: increment(prev.toolsByName, tool.name),
   }
 
+  // Lifetime counters are built once and incremented per kind below, so the
+  // Session and Profile views of the same event stay easy to audit together.
+  const profile: ProfileState = {
+    ...state.profile,
+    toolCalls: state.profile.toolCalls + 1,
+    toolsByName: increment(state.profile.toolsByName, tool.name),
+  }
+
   switch (tool.kind) {
     case 'file-read': {
       if (!event.isError) {
+        profile.fileReads += 1
         const path = tool.path ?? ''
         const isNewFile = prev.filesRead[path] === undefined
         next.filesRead = increment(prev.filesRead, path)
@@ -97,6 +112,7 @@ function reduceToolCall(
     }
     case 'file-edit': {
       if (!event.isError) {
+        profile.fileEdits += 1
         const path = tool.path ?? ''
         const isNewFile = prev.filesEdited[path] === undefined
         next.filesEdited = increment(prev.filesEdited, path)
@@ -116,8 +132,11 @@ function reduceToolCall(
       break
     }
     case 'test-run': {
+      profile.testRuns += 1
       const command = tool.command ?? ''
       const passed = !event.isError
+      if (passed) profile.testPasses += 1
+      else profile.testFailures += 1
       next.commands = increment(prev.commands, command)
       next.tests = {
         runs: prev.tests.runs + 1,
@@ -150,11 +169,7 @@ function reduceToolCall(
 
   return {
     ...state,
-    profile: {
-      ...state.profile,
-      toolCalls: state.profile.toolCalls + 1,
-      toolsByName: increment(state.profile.toolsByName, tool.name),
-    },
+    profile,
     sessions: touchSession(state.sessions, sessionId, next),
   }
 }

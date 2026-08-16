@@ -131,10 +131,27 @@ export function chainProgressOf(chain: AchievementChain, unlocked: Record<string
   return { chain, completed, total: chain.achievementIds.length, nextId, done: completed === chain.achievementIds.length }
 }
 
-/** Built-in chains over the shipped achievement ids. */
-export const BUILTIN_CHAINS: readonly AchievementChain[] = [
-  { id: 'turns', title: { zh: '回合之路', en: 'Turn Road' }, achievementIds: ['first-turn', 'ten-turns', 'hundred-turns'] },
-  { id: 'tools', title: { zh: '工具之途', en: 'Tool Path' }, achievementIds: ['first-tool', 'hundred-tools'] },
+/**
+ * The seven formal five-tier Lifetime progression chains. Each has exactly five
+ * nodes ordered common → uncommon → rare → epic → legendary (see Task 17), and
+ * drives the Badge Wall's milestone grouping — the UI derives milestone ids from
+ * these chains rather than hardcoding them.
+ */
+export const MILESTONE_CHAINS: readonly AchievementChain[] = [
+  { id: 'turns', title: { zh: '回合之路', en: 'Turn Road' }, achievementIds: ['first-turn', 'turns-25', 'turns-50', 'hundred-turns', 'turns-500'] },
+  { id: 'tools', title: { zh: '工具之途', en: 'Tool Path' }, achievementIds: ['first-tool', 'tools-25', 'hundred-tools', 'tools-500', 'tools-2000'] },
+  { id: 'sessions', title: { zh: '会话旅程', en: 'Session Journey' }, achievementIds: ['sessions-1', 'ten-sessions', 'sessions-50', 'sessions-200', 'sessions-500'] },
+  { id: 'active-days', title: { zh: '活跃岁月', en: 'Active Days' }, achievementIds: ['active-days-1', 'active-days-7', 'active-days-30', 'active-days-100', 'active-days-365'] },
+  { id: 'file-reads', title: { zh: '阅读之路', en: 'File Reads' }, achievementIds: ['file-reads-10', 'file-reads-100', 'file-reads-500', 'file-reads-2500', 'file-reads-10000'] },
+  { id: 'file-edits', title: { zh: '编辑之路', en: 'File Edits' }, achievementIds: ['file-edits-1', 'file-edits-10', 'file-edits-50', 'file-edits-250', 'file-edits-1000'] },
+  { id: 'tests', title: { zh: '测试之路', en: 'Test Runs' }, achievementIds: ['tests-1', 'tests-10', 'tests-50', 'tests-250', 'tests-1000'] },
+]
+
+/** Non-progression special chains: streaks + session behavior. */
+export const SPECIAL_CHAINS: readonly AchievementChain[] = [
   { id: 'streaks', title: { zh: '连续作战', en: 'Streak' }, achievementIds: ['streak-3', 'streak-7'] },
   { id: 'behavior', title: { zh: '行为狂人', en: 'Behavior Maniac' }, achievementIds: ['deja-vu', 'rabbit-hole', 'yolo', 'it-works-eventually'] },
 ]
+
+/** Every built-in chain: seven milestone lines first, then special chains. */
+export const BUILTIN_CHAINS: readonly AchievementChain[] = [...MILESTONE_CHAINS, ...SPECIAL_CHAINS]

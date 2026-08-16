@@ -49,7 +49,7 @@ describe('achievement registry', () => {
   it('registers the builtin pack through the same registry path', () => {
     const registry = createAchievementRegistry()
     registry.registerPack(BUILTIN_PACK)
-    expect(registry.list().length).toBe(18)
+    expect(registry.list().length).toBe(48)
     expect(registry.list()[0]!.id).toBe('first-turn')
   })
 })

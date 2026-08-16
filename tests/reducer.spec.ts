@@ -167,6 +167,54 @@ describe('reducer — turns / streak', () => {
   })
 })
 
+describe('reducer — lifetime metrics (P6)', () => {
+  it('accumulates activeDays once per calendar day, independent of session id', () => {
+    let state = createInitialState()
+    expect(state.profile.activeDays).toBe(0)
+    state = reduceState(state, turnEnd('s1', 0), '2026-01-01')
+    expect(state.profile.activeDays).toBe(1)
+    state = reduceState(state, turnEnd('s1', 1), '2026-01-01')
+    expect(state.profile.activeDays).toBe(1)
+    state = reduceState(state, turnEnd('s2', 0), '2026-01-02')
+    expect(state.profile.activeDays).toBe(2)
+  })
+
+  it('still +1 activeDays across a streak gap while currentStreak resets', () => {
+    let state = reduceState(createInitialState(), turnEnd('s', 0), '2026-01-01')
+    state = reduceState(state, turnEnd('s', 1), '2026-01-02')
+    expect(state.profile.currentStreak).toBe(2)
+    state = reduceState(state, turnEnd('s', 2), '2026-01-05')
+    expect(state.profile.activeDays).toBe(3)
+    expect(state.profile.currentStreak).toBe(1)
+    expect(state.profile.longestStreak).toBe(2)
+  })
+
+  it('accumulates lifetime fileReads on success and ignores failed reads', () => {
+    let state = reduceState(createInitialState(), tool('s', 0, read('a.txt')), '2026-01-01')
+    state = reduceState(state, tool('s', 1, read('a.txt')), '2026-01-01')
+    state = reduceState(state, tool('s', 2, read('b.txt'), true), '2026-01-01')
+    expect(state.profile.fileReads).toBe(2)
+  })
+
+  it('accumulates lifetime fileEdits on success and ignores failed edits', () => {
+    let state = reduceState(createInitialState(), tool('s', 0, edit('a.ts')), '2026-01-01')
+    state = reduceState(state, tool('s', 1, edit('a.ts')), '2026-01-01')
+    state = reduceState(state, tool('s', 2, edit('b.ts'), true), '2026-01-01')
+    expect(state.profile.fileEdits).toBe(2)
+    expect(state.sessions.s?.edits).toBe(2)
+  })
+
+  it('accumulates lifetime testRuns/passes/failures in sync with the session', () => {
+    let state = reduceState(createInitialState(), tool('s', 0, test('npm test')), '2026-01-01')
+    state = reduceState(state, tool('s', 1, test('npm test'), true), '2026-01-01')
+    state = reduceState(state, tool('s', 2, shell('ls')), '2026-01-01')
+    expect(state.profile.testRuns).toBe(2)
+    expect(state.profile.testPasses).toBe(1)
+    expect(state.profile.testFailures).toBe(1)
+    expect(state.sessions.s?.tests).toEqual({ runs: 2, passed: 1, failed: 1, lastOutcome: 'fail' })
+  })
+})
+
 describe('buildContext', () => {
   it('returns profile plus the session bucket, or an empty session for unknown ids', () => {
     let state = reduceState(createInitialState(), tool('s1', 0, read('a.txt')), '2026-01-01')

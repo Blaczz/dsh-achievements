@@ -27,6 +27,18 @@ export interface ProfileState {
     lastActiveDay: string | null;
     /** Distinct session ids that completed a turn (single source for `sessions`). */
     seenSessions: string[];
+    /** Distinct local calendar days with at least one completed turn. */
+    activeDays: number;
+    /** Lifetime successful file-read invocations (not distinct paths). */
+    fileReads: number;
+    /** Lifetime successful file-edit invocations (not distinct paths). */
+    fileEdits: number;
+    /** Lifetime test-run invocations (pass + fail). */
+    testRuns: number;
+    /** Lifetime passed test runs. */
+    testPasses: number;
+    /** Lifetime failed test runs. */
+    testFailures: number;
 }
 export interface SessionAchievementState {
     toolCalls: number;

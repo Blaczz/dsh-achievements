@@ -44,6 +44,18 @@ export interface ProfileState {
   lastActiveDay: string | null
   /** Distinct session ids that completed a turn (single source for `sessions`). */
   seenSessions: string[]
+  /** Distinct local calendar days with at least one completed turn. */
+  activeDays: number
+  /** Lifetime successful file-read invocations (not distinct paths). */
+  fileReads: number
+  /** Lifetime successful file-edit invocations (not distinct paths). */
+  fileEdits: number
+  /** Lifetime test-run invocations (pass + fail). */
+  testRuns: number
+  /** Lifetime passed test runs. */
+  testPasses: number
+  /** Lifetime failed test runs. */
+  testFailures: number
 }
 
 export interface SessionAchievementState {
@@ -120,6 +132,12 @@ export function createInitialProfile(): ProfileState {
     longestStreak: 0,
     lastActiveDay: null,
     seenSessions: [],
+    activeDays: 0,
+    fileReads: 0,
+    fileEdits: 0,
+    testRuns: 0,
+    testPasses: 0,
+    testFailures: 0,
   }
 }
 
@@ -192,6 +210,7 @@ function migrateV1(v1: Record<string, unknown>): AchievementState {
     ? v1.seenSessions.filter((item): item is string => typeof item === 'string')
     : []
   const currentStreak = toNumber(counters.streakDays)
+  const lastActiveDay = typeof v1.lastActiveDay === 'string' ? v1.lastActiveDay : null
   return {
     version: STATE_VERSION,
     profile: {
@@ -203,8 +222,16 @@ function migrateV1(v1: Record<string, unknown>): AchievementState {
       sessions: seenSessions.length,
       currentStreak,
       longestStreak: currentStreak,
-      lastActiveDay: typeof v1.lastActiveDay === 'string' ? v1.lastActiveDay : null,
+      lastActiveDay,
       seenSessions,
+      // v1 carried no session buckets, so file/test lifetime facts are
+      // unrecoverable; activeDays uses the streak as its provable lower bound.
+      activeDays: Math.max(currentStreak, lastActiveDay === null ? 0 : 1),
+      fileReads: 0,
+      fileEdits: 0,
+      testRuns: 0,
+      testPasses: 0,
+      testFailures: 0,
     },
     sessions: {},
   }
@@ -234,7 +261,53 @@ function normalizeV2(v2: Record<string, unknown>): AchievementState {
   const keys = Object.keys(sessions)
   for (const key of keys.slice(0, Math.max(0, keys.length - MAX_SESSIONS))) delete sessions[key]
 
+  // P6 additive fields: a persisted value (including an explicit 0) always wins;
+  // a missing field is conservatively backfilled from the retained session
+  // buckets — a provable lower bound, never a full historical reconstruction.
+  profile.activeDays = numberOrBackfill(profileRaw, 'activeDays', () => activeDaysLowerBound(profile))
+  profile.fileReads = numberOrBackfill(profileRaw, 'fileReads', () => sumFileCounts(sessions, 'filesRead'))
+  profile.fileEdits = numberOrBackfill(profileRaw, 'fileEdits', () => sumFileCounts(sessions, 'filesEdited'))
+  profile.testRuns = numberOrBackfill(profileRaw, 'testRuns', () => sumTestCounts(sessions, 'runs'))
+  profile.testPasses = numberOrBackfill(profileRaw, 'testPasses', () => sumTestCounts(sessions, 'passed'))
+  profile.testFailures = numberOrBackfill(profileRaw, 'testFailures', () => sumTestCounts(sessions, 'failed'))
+
   return { version: STATE_VERSION, profile, sessions }
+}
+
+/**
+ * Return the persisted number for `key` when the raw record actually owns it,
+ * otherwise compute the backfill fallback. Presence-aware: an explicitly saved
+ * `0` must not be mistaken for "missing" and re-aggregated from sessions.
+ */
+function numberOrBackfill(raw: Record<string, unknown>, key: string, backfill: () => number): number {
+  return Object.prototype.hasOwnProperty.call(raw, key) ? toNumber(raw[key]) : backfill()
+}
+
+/** Conservative activeDays lower bound from backward-compatible streak facts. */
+function activeDaysLowerBound(profile: ProfileState): number {
+  return Math.max(profile.currentStreak, profile.longestStreak, profile.lastActiveDay === null ? 0 : 1)
+}
+
+/** Sum the per-path invocation counts of one file map across retained sessions. */
+function sumFileCounts(
+  sessions: Record<string, SessionAchievementState>,
+  field: 'filesRead' | 'filesEdited',
+): number {
+  let sum = 0
+  for (const session of Object.values(sessions)) {
+    for (const count of Object.values(session[field])) sum += count
+  }
+  return sum
+}
+
+/** Sum one test counter across retained sessions. */
+function sumTestCounts(
+  sessions: Record<string, SessionAchievementState>,
+  field: 'runs' | 'passed' | 'failed',
+): number {
+  let sum = 0
+  for (const session of Object.values(sessions)) sum += session.tests[field]
+  return sum
 }
 
 function normalizeSession(raw: Record<string, unknown>): SessionAchievementState {

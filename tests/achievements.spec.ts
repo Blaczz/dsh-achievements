@@ -1,13 +1,13 @@
 /** Pure engine tests: legacy counter unlock rules (unchanged behavior) + the v2 context/evaluate model. */
 import { describe, expect, it } from 'vitest'
 import {
-  applyEvent, BUILTIN_ACHIEVEMENTS, computeProgress, fromCounterCondition, toAchievementView,
+  applyEvent, BUILTIN_ACHIEVEMENTS, computeProgress, createLifetimeMilestone, fromCounterCondition, toAchievementView,
 } from '../src/achievements.ts'
 import type { AchievementDef } from '../src/achievements.ts'
 import type { AchievementEvent } from '../src/events.ts'
 import { buildContext } from '../src/reducer.ts'
 import type { AchievementState } from '../src/state.ts'
-import { createInitialSessionState, createInitialState } from '../src/state.ts'
+import { createInitialProfile, createInitialSessionState, createInitialState } from '../src/state.ts'
 
 const T = 1_700_000_000_000
 
@@ -164,25 +164,33 @@ describe('achievement domain model v2', () => {
 describe('XP accumulation', () => {
   it('grants XP exactly once per achievement', () => {
     const first = applyEvent(createInitialState(), turnEnd('s1', 0), BUILTIN_ACHIEVEMENTS, '2026-01-01', T)
-    expect(first.state.profile.xp).toBe(10) // first-turn = +10
+    // The first turn also satisfies sessions-1 / active-days-1; XP equals the sum.
+    expect(first.newlyUnlocked.map(d => d.id)).toContain('first-turn')
+    expect(first.state.profile.xp).toBe(first.newlyUnlocked.reduce((sum, d) => sum + d.xp, 0))
     const second = applyEvent(first.state, turnEnd('s1', 1), BUILTIN_ACHIEVEMENTS, '2026-01-01', T + 1)
     expect(second.newlyUnlocked).toHaveLength(0)
-    expect(second.state.profile.xp).toBe(10) // no double XP
+    expect(second.state.profile.xp).toBe(first.state.profile.xp) // no double XP
   })
 
   it('accumulates XP across distinct unlocks', () => {
     let state = createInitialState()
-    state = applyEvent(state, turnEnd('s1', 0), BUILTIN_ACHIEVEMENTS, '2026-01-01', T).state // +10
-    state = applyEvent(state, toolCall('s1', 0), BUILTIN_ACHIEVEMENTS, '2026-01-01', T).state // first-tool +10
-    expect(state.profile.xp).toBe(20)
+    const first = applyEvent(state, turnEnd('s1', 0), BUILTIN_ACHIEVEMENTS, '2026-01-01', T)
+    state = first.state
+    const second = applyEvent(state, toolCall('s1', 0), BUILTIN_ACHIEVEMENTS, '2026-01-01', T)
+    expect(second.newlyUnlocked.map(d => d.id)).toContain('first-tool')
+    expect(second.state.profile.xp).toBe(first.state.profile.xp + 10) // first-tool +10
   })
 
   it('records the session-scoped unlock list and XP delta', () => {
     let state = createInitialState()
-    state = applyEvent(state, turnEnd('s1', 0), BUILTIN_ACHIEVEMENTS, '2026-01-01', T).state // first-turn
+    state = applyEvent(state, turnEnd('s1', 0), BUILTIN_ACHIEVEMENTS, '2026-01-01', T).state // first-turn (+ siblings)
     state = applyEvent(state, toolCall('s1', 0), BUILTIN_ACHIEVEMENTS, '2026-01-01', T).state // first-tool
-    expect(state.sessions.s1?.unlocked).toEqual(['first-turn', 'first-tool'])
-    expect(state.sessions.s1?.xpGained).toBe(20)
+    const unlocked = state.sessions.s1!.unlocked
+    expect(unlocked).toContain('first-turn')
+    expect(unlocked).toContain('first-tool')
+    // Session XP delta equals the sum of every achievement unlocked this session.
+    const expected = unlocked.reduce((sum, id) => sum + BUILTIN_ACHIEVEMENTS.find(d => d.id === id)!.xp, 0)
+    expect(state.sessions.s1?.xpGained).toBe(expected)
   })
 })
 
@@ -199,5 +207,38 @@ describe('computeProgress', () => {
     )
     const ctx = buildContext(createInitialState(), 's')
     expect(computeProgress([def, counter], ctx)).toEqual({ prog: { progress: 3, target: 10 } })
+  })
+})
+
+describe('lifetime milestone framework (P6)', () => {
+  const milestone = createLifetimeMilestone({
+    id: 'm50', icon: '🎯', title: { zh: 'M', en: 'M' }, description: { zh: 'm', en: 'm' },
+    rarity: 'rare', xp: 75, target: 50, value: p => p.toolCalls,
+  })
+
+  function ctxWith(toolCalls: number) {
+    return { profile: { ...createInitialProfile(), toolCalls }, session: createInitialSessionState() }
+  }
+
+  it('reports N-1 / N / N+1 progress without clamping', () => {
+    expect(milestone.evaluate(ctxWith(49))).toEqual({ unlocked: false, progress: 49, target: 50 })
+    expect(milestone.evaluate(ctxWith(50))).toEqual({ unlocked: true, progress: 50, target: 50 })
+    expect(milestone.evaluate(ctxWith(51))).toEqual({ unlocked: true, progress: 51, target: 50 })
+  })
+
+  it('keeps legacy hundred-tools metadata + threshold, now with progress', () => {
+    const def = BUILTIN_ACHIEVEMENTS.find(d => d.id === 'hundred-tools')!
+    expect(def.rarity).toBe('rare')
+    expect(def.xp).toBe(150)
+    expect(def.scope).toBe('lifetime')
+    expect(def.evaluate(ctxWith(99))).toEqual({ unlocked: false, progress: 99, target: 100 })
+    expect(def.evaluate(ctxWith(100)).unlocked).toBe(true)
+  })
+
+  it('keeps legacy hundred-turns metadata', () => {
+    const def = BUILTIN_ACHIEVEMENTS.find(d => d.id === 'hundred-turns')!
+    expect(def.rarity).toBe('epic')
+    expect(def.xp).toBe(200)
+    expect(def.evaluate({ profile: { ...createInitialProfile(), turns: 100 }, session: createInitialSessionState() }).unlocked).toBe(true)
   })
 })
