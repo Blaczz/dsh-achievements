@@ -1,4 +1,4 @@
-# dsh-achievements 🏆
+# dsh-achievements 🏆[![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
 
 > A gamification layer for **DeepSeek Harness (DSH)**: 68 achievements across seven five-tier growth lines, session behavior badges and trajectory chains — with real-time unlock toasts, a badge wall in the settings page, shareable cards, Agent Wrapped and a public SDK for third-party packs. **Zero core changes.**
 
