@@ -1,6 +1,6 @@
 {
   "name": "dsh-achievements",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DeepSeek Harness achievement & gamification plugin: cross-session badges for turns, tool calls, sessions and daily streaks, with a badge panel, unlock toasts and a ctx.achievements service. Zero core changes.",
   "keywords": [
     "dsh",
@@ -12,6 +12,10 @@
     "badges"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Blaczz/dsh-achievements.git"
+  },
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -39,6 +43,13 @@
         "@deepseek-ai/dsh-client-ui-primitives",
         "@deepseek-ai/dsh-client-ui-slots"
       ]
+    },
+    "compatibility": {
+      "dsh": ">=0.1.0-rc.3 <0.2.0",
+      "node": ">=22.19.0",
+      "dshReleases": {
+        "0.1.5-alpha.1": "compatible"
+      }
     }
   },
   "files": [

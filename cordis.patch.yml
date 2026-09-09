@@ -2,7 +2,11 @@
 # Inserted as its own profile layer when installed via `dsh plugin add`.
 # The `name` is this package's own entry point, resolved from the profile's
 # node_modules where pnpm installs the bundle.
+#
+# Entry id is plugin-owned and distinct from the approved-catalog entry ids
+# (`achievements` / `ui-achievements` are taken by the older wjnct55555 bundle),
+# so this bundle registers additively without impersonating another package.
 
 - insert:
-    - id: achievements
+    - id: dsh-achievements
       name: 'dsh-achievements'

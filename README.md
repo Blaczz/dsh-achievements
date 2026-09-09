@@ -78,12 +78,12 @@ Prereqs: DSH (`dsh web` works), Node ≥ 22.19.
 
 ```bash
 # From GitHub (prebuilt lib/ is committed, no allowBuilds needed)
-dsh plugin --profile web add "github:luumod/dsh-achievements#main"
+dsh plugin --profile web add "github:Blaczz/dsh-achievements#main"
 
 # From a local checkout (npm pack is the reliable path on Windows; avoid `link:`)
 cd dsh-achievements && npm install --legacy-peer-deps && npm run build
 npm pack --ignore-scripts
-dsh plugin --profile web add "<absolute path to>\dsh-achievements-0.1.0.tgz"
+dsh plugin --profile web add "<absolute path to>\dsh-achievements-0.2.0.tgz"
 ```
 
 **Restart `dsh web` after installing**, then just use it — the first completed turn unlocks the first achievement (all counting rides the official event seam, so simply chatting works).
@@ -170,6 +170,13 @@ dsh-achievements/
 - **Fills a gap** — the DSH ecosystem previously had no unified achievement/badge system (community research explicitly flagged the missing gamification layer).
 - **Same dual-sided pattern as `dsh-soundscape`** — Host drives a pure engine off the official event seams; the browser half is a client plugin (`settings.section` + state polling).
 - **Zero core changes** — read-only events + a private state file + `ctx.effect` registrations. A fork of [Blaczz/dsh-achievements](https://github.com/Blaczz/dsh-achievements), extended with behavior + trajectory achievements, the SDK and the sharing layer.
+
+## 🛡️ DSH STORE listing contract
+
+- **Manifest identity** — `repository` points at the canonical `Blaczz/dsh-achievements`; the bundle entry id (`cordis.patch.yml`) is the plugin-owned `dsh-achievements`, kept distinct from the approved-catalog ids (`achievements` / `ui-achievements` are used by the older `@wjnct55555/dsh-achievements-bundle`), so this package registers additively without impersonating another entry.
+- **Compatibility declarations** — `dsh.compatibility` declares the DSH range, the Node range, and exact per-release records under `dshReleases`. A record is only set to `compatible` after a real disposable-profile run against that exact release; other releases stay `unknown`.
+- **Disposable-profile evidence** — `scripts/store-evidence.mjs <dshVersion>` boots an isolated profile (fresh temp `$DSH_HOME`, pinned official `@deepseek-ai/dsh@<dshVersion>` + `@deepseek-ai/dsh-web-app@<dshVersion>`), installs the packed tarball, verifies the composed config, boots the web app headless until it listens, then uninstalls and removes the profile. Captured runs:
+  - [`docs/store-evidence-0.1.5-alpha.1.md`](docs/store-evidence-0.1.5-alpha.1.md) — install / start / uninstall passed on `@deepseek-ai/dsh@0.1.5-alpha.1`.
 
 ## ⚖️ License
 

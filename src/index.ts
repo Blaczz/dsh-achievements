@@ -8,7 +8,12 @@ import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-tools'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+// dsh-settings branding: newer DSH releases (>= 0.1.5-alpha) removed the
+// settingsNamespace() runtime helper — namespaces are plain strings there.
+// The brand is compile-time only, so a missing-helper identity fallback keeps
+// ONE host code path working across the rc and alpha release lines.
+import * as settingsApi from '@deepseek-ai/dsh-settings'
+import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import {
   applyEvent, BUILTIN_ACHIEVEMENTS, BUILTIN_PACK, computeProgress, DEFAULT_ACHIEVEMENTS_SETTINGS,
   reconcileLifetimeAchievements, toAchievementView,
@@ -85,8 +90,17 @@ export function localToday(now = new Date()): string {
   return `${year}-${month}-${day}`
 }
 
+/**
+ * Brand a settings-namespace string across DSH release lines. Newer releases
+ * removed `settingsNamespace()`; when it is absent the identity fallback keeps
+ * the register/read calls identical (the brand is compile-time only).
+ */
+const brandSettingsNamespace: (value: string) => SettingsNamespace =
+  (settingsApi as { settingsNamespace?: (value: string) => SettingsNamespace }).settingsNamespace
+  ?? ((value: string) => value as unknown as SettingsNamespace)
+
 export function apply(ctx: Context): void {
-  const settings = ctx.settings.register(settingsNamespace('achievements'), SettingsSchema)
+  const settings = ctx.settings.register(brandSettingsNamespace('achievements'), SettingsSchema)
   let state: AchievementState = loadState()
 
   const persist = (): void => {

@@ -78,12 +78,12 @@ DSH session/event（turn/end、step/start、assistant/message、step/end、tool/
 
 ```bash
 # GitHub 安装（预构建 lib/ 已提交，无需 allowBuilds）
-dsh plugin --profile web add "github:luumod/dsh-achievements#main"
+dsh plugin --profile web add "github:Blaczz/dsh-achievements#main"
 
 # 本地目录安装（Windows 上 npm pack 最稳，别用 `link:`）
 cd dsh-achievements && npm install --legacy-peer-deps && npm run build
 npm pack --ignore-scripts
-dsh plugin --profile web add "<绝对路径>\dsh-achievements-0.1.0.tgz"
+dsh plugin --profile web add "<绝对路径>\dsh-achievements-0.2.0.tgz"
 ```
 
 安装后**重启 `dsh web`**，然后正常使用——完成第一个回合即解锁第一个成就（所有统计走官方事件缝，正常对话即可）。
@@ -170,6 +170,13 @@ dsh-achievements/
 - **填补空白** —— DSH 生态此前无统一成就/徽章系统（社区调研明确点名"暂无真正游戏化任务/成就/等级系统"）。
 - **与 `dsh-soundscape` 同一套双面包范式** —— Host 走官方事件缝驱动纯引擎；浏览器半是 client 插件（`settings.section` + 状态轮询）。
 - **零核心改动** —— 只读事件 + 自有状态文件 + `ctx.effect` 注册。本仓库是 [Blaczz/dsh-achievements](https://github.com/Blaczz/dsh-achievements) 的 fork，在其基础上扩展了行为 + 轨迹成就、SDK 与分享层。
+
+## 🛡️ DSH STORE 上架契约
+
+- **清单身份** —— `repository` 指向 canonical `Blaczz/dsh-achievements`；bundle 入口 id（`cordis.patch.yml`）为插件自有 `dsh-achievements`，与已批准目录占用的 `achievements` / `ui-achievements`（旧 `@wjnct55555/dsh-achievements-bundle`）保持区分，只做增量注册、不冒用他人入口。
+- **兼容声明** —— `dsh.compatibility` 声明 DSH 范围、Node 范围与 `dshReleases` 逐版本精确记录；只有在该精确版本上真实跑过一次一次性 Profile 才标 `compatible`，其余保持 `unknown`。
+- **一次性 Profile 证据** —— `scripts/store-evidence.mjs <dshVersion>` 会引导隔离 Profile（全新临时 `$DSH_HOME`、固定官方 `@deepseek-ai/dsh@<dshVersion>` + `@deepseek-ai/dsh-web-app@<dshVersion>`）、安装打包产物、校验组合配置、无头启动 web 至监听、再卸载并清理 Profile。已捕获运行：
+  - [`docs/store-evidence-0.1.5-alpha.1.md`](docs/store-evidence-0.1.5-alpha.1.md) —— 在 `@deepseek-ai/dsh@0.1.5-alpha.1` 上 install / start / uninstall 通过。
 
 ## ⚖️ License
 
